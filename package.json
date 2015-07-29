@@ -1,6 +1,6 @@
 {
   "name": "vt-grid",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Build up a pyramid of vector tiles by aggregating quantitative data into grids at lower zooms.",
   "main": "index.js",
   "bin": "./cli.js",
