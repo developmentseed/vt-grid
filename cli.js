@@ -14,6 +14,8 @@ var argv = require('yargs')
   .array('fields')
   .demand('fields')
   .default('gridsize', 4)
+  .describe('basezoom', 'The zoom level *above* which to start building (data should already exist at z-basezoom).')
+  .describe('minzoom', 'The lowest zoom level at which to build the grid.')
   .help('h')
   .argv
 
