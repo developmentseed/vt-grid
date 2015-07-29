@@ -3,6 +3,7 @@
   "version": "1.0.1",
   "description": "Build up a pyramid of vector tiles by aggregating quantitative data into grids at lower zooms.",
   "main": "index.js",
+  "bin": "./cli.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
