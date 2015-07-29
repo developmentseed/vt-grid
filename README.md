@@ -68,3 +68,11 @@ vt-grid data.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
   --fields 'density:areaWeightedMean(density)' 'numzones:sum(numzones)'
 ```
 
+
+## Built With
+
+ - [Turf.js](http://turfjs.org) and several other super fly modules by
+   [Mapbox](https://github.com/mapbox)
+ - Also, several conversations with @morganherlocker (the author of many of the
+   aforementioned modules, including Turf.)
+
