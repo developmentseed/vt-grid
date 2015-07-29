@@ -24,7 +24,7 @@ that you can visualize the spatial distribution of your data at any scale.
 ## Installation
 
 ```sh
-npm install vt-grid
+npm install -g vt-grid
 ```
 
 
