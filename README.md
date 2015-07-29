@@ -21,6 +21,13 @@ varies with zoom level, aggregate the quantitative features of interest, so
 that you can visualize the spatial distribution of your data at any scale.
 
 
+## Installation
+
+```sh
+npm install vt-grid
+```
+
+
 ## Usage
 
 To start, you'll need an `mbtiles` file containing the original polygon data at
