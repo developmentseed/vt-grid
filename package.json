@@ -2,7 +2,7 @@
   "name": "vt-grid",
   "version": "1.0.3",
   "description": "Build up a pyramid of vector tiles by aggregating quantitative data into grids at lower zooms.",
-  "main": "index.js",
+  "main": "grid.js",
   "bin": "./cli.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
