@@ -6,8 +6,7 @@ var Pbf = require('pbf')
 var tilebelt = require('tilebelt')
 var uniq = require('uniq')
 var queue = require('queue-async')
-var area = require('turf-area')
-var squareGrid = require('turf-square-grid')
+var rectangleGrid = require('turf-rectangle-grid')
 var aggregate = require('geojson-polygon-aggregate')
 var list = require('./list')
 
@@ -29,7 +28,7 @@ function buildLevel (db, opts, z, callback) {
     console.log('Building %s tiles at zoom level %s', parents.length, z)
     aggregateLevel(db, opts, parents, function (err) {
       if (err) { return callback(err) }
-      console.log('Finished building zoom %s', z)
+      console.log('\nFinished building zoom %s', z)
       buildLevel(db, opts, z - 1, callback)
     })
   })
@@ -150,11 +149,6 @@ function getTileChildren (tile) {
 
 function tileGrid (tile, gridsize) {
   tile = [tile[1], tile[2], tile[0]]
-  var sidelength = Math.sqrt(area(tilebelt.tileToGeoJSON(tile)))
-  var boxes = squareGrid(
-    tilebelt.tileToBBOX(tile),
-    Math.ceil(sidelength / 1000 / gridsize),
-    'kilometers'
-  ).features
-  return boxes
+  var boxes = rectangleGrid(tilebelt.tileToBBOX(tile), [gridsize, gridsize])
+  return boxes.features
 }
