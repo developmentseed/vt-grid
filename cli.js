@@ -2,7 +2,7 @@
 var path = require('path')
 var MBTiles = require('mbtiles')
 var aggregate = require('geojson-polygon-aggregate')
-var multimeter = require('multimeter')
+var ProgressBar = require('progress')
 var grid = require('./grid')
 
 var argv = require('yargs')
@@ -23,27 +23,40 @@ var input = argv._[0]
 
 input = path.resolve(process.cwd(), input)
 
-var multi = multimeter(process)
-multi.drop({ width: 40 }, function (bar) {
-  argv.progress = function (p) { bar.percent(100 * p) }
-  var mbtiles = new MBTiles('mbtiles://' + input, function (err) {
-    if (err) { throw err }
-    argv.layers = {}
-    argv.layers[argv.layer] = { }
-    argv.fields.forEach(function (field) {
-      // outField:func(inField)
-      var match = /([^:]+):([^\(]+)\((.*)\)/.exec(field)
-      var outField = match[1]
-      var fn = match[2]
-      var inField = match[3]
-      argv.layers[argv.layer][outField] = aggregate[fn](inField)
+var bar
+argv.progress = function (tiles, total, features, nextTile) {
+  if (!bar || total !== bar.total) {
+    bar = new ProgressBar(
+      'tile::nextTile [:bar] :percent :elapsed/:etas [:featureavg feats/tile] [:tileRate tiles/min]', {
+      width: 20,
+      total: total
     })
+  }
 
-    grid(mbtiles, argv, function (err) {
-      multi.destroy()
-      if (err) { throw err }
-      console.log('Finished!')
-    })
+  bar.update(tiles / total, {
+    features: features,
+    featureavg: tiles > 0 ? Math.round(features / tiles) : 'n/a',
+    nextTile: nextTile.join('/'),
+    tileRate: Math.round(100 * 60000 * tiles / (new Date() - bar.start)) / 100
+  })
+}
+
+var mbtiles = new MBTiles('mbtiles://' + input, function (err) {
+  if (err) { throw err }
+  argv.layers = {}
+  argv.layers[argv.layer] = { }
+  argv.fields.forEach(function (field) {
+    // outField:func(inField)
+    var match = /([^:]+):([^\(]+)\((.*)\)/.exec(field)
+    var outField = match[1]
+    var fn = match[2]
+    var inField = match[3]
+    argv.layers[argv.layer][outField] = aggregate[fn](inField)
   })
 
+  grid(mbtiles, argv, function (err) {
+    bar.terminate()
+    if (err) { throw err }
+    console.log('Finished!')
+  })
 })
