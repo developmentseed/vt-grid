@@ -106,26 +106,23 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
     })
 
     var progeny = getTileProgeny(tile, gz)
-    var boxes = new Array(progeny.length)
+    var boxes = []
     for (var i = 0; i < progeny.length; i++) {
       var t = tileIndex.getTile.apply(tileIndex, progeny[i])
-      var features
-      if (t) {
-        var vt = new GeoJSONWrapper(t.features)
-        features = new Array(vt.length)
-        for (var j = 0; j < vt.length; j++) {
-          var feat = vt.feature(j)
-          features[j] = feat.toGeoJSON.apply(feat, toXYZ(progeny[i]))
-        }
-      } else {
-        features = []
+      if (!t) { continue }
+
+      var vt = new GeoJSONWrapper(t.features)
+      var features = new Array(vt.length)
+      for (var j = 0; j < vt.length; j++) {
+        var feat = vt.feature(j)
+        features[j] = feat.toGeoJSON.apply(feat, toXYZ(progeny[i]))
       }
 
-      boxes[i] = {
+      boxes.push({
         type: 'Feature',
         properties: aggregate(features, options.layers[layer]),
         geometry: tilebelt.tileToGeoJSON(toXYZ(progeny[i]))
-      }
+      })
     }
 
     aggregatedLayers[layer] = geojsonvt({
