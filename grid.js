@@ -15,7 +15,7 @@ module.exports = grid
 
 function grid (source, opts, callback) {
   if (!callback) { callback = function () {} }
-  opts.minzoom = Math.min(0, opts.minzoom)
+  opts.minzoom = Math.max(0, opts.minzoom)
   opts.basezoom = Math.max(opts.minzoom, opts.basezoom)
   opts.gridsize = +(opts.gridsize || 64)
   opts._depth = Math.log2(opts.gridsize) / 2
