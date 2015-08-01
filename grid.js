@@ -211,9 +211,3 @@ function toZXY (tile) {
 function toXYZ (tile) {
   return [tile[1], tile[2], tile[0]]
 }
-
-function tileGrid (tile, gridsize) {
-  tile = [tile[1], tile[2], tile[0]]
-  var boxes = rectangleGrid(tilebelt.tileToBBOX(tile), [gridsize, gridsize])
-  return boxes.features
-}
