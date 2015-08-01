@@ -12,6 +12,14 @@ var GeoJSONWrapper = require('./lib/geojson-wrapper')
 
 module.exports = grid
 
+/**
+ * @param {MBTiles} source
+ * @param {number} opts.basezoom
+ * @param {Object} opts.layers - Maps layer names to aggregation objects, which themselves map field names to aggregation functions as per geojson-polygon-aggregate.
+ * @param {number} [opts.minzoom = 0]
+ * @param {number} [opts.gridsize = 64]
+ * @param {function} callback
+ */
 function grid (source, opts, callback) {
   if (!callback) { callback = function () {} }
   opts.minzoom = Math.max(0, opts.minzoom)
