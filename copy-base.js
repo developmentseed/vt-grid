@@ -2,7 +2,7 @@
 
 var path = require('path')
 var MBTiles = require('mbtiles')
-var list = require('./list')
+var list = require('./lib/list')
 
 var argv = require('yargs')
   .alias('output', 'o')

@@ -5,15 +5,20 @@ var aggregate = require('geojson-polygon-aggregate')
 var ProgressBar = require('progress')
 var grid = require('./grid')
 
+var validAggregations = Object.keys(aggregate)
+
 var argv = require('yargs')
-  .usage('$0 data.mbtiles --minzoom 7 --basezoom 12 --layer census [--gridsize 4] --fields \'density:areaWeightedMean(density)\' \'zones:count()\'')
+  .usage('$0 data.mbtiles [--minzoom 7] [--basezoom 12] [--gridsize 1024] --fields \'layerName:areaWeightedMean(fieldName)\' \'layerName:count()\'')
   .demand(1)
-  .default('minzoom', 1)
   .array('fields')
   .demand('fields')
-  .default('gridsize', 1024)
-  .describe('basezoom', 'The zoom level *above* which to start building (data should already exist at z-basezoom).')
+  .describe('fields', 'The aggregations to perform, in the form \'layerName:aggregationFunction(fieldName)\',  aggregationFunction is one of: ' + validAggregations.join(', '))
+  .default('minzoom', 1)
   .describe('minzoom', 'The lowest zoom level at which to build the grid.')
+  .default('gridsize', 1024)
+  .describe('gridsize', 'The number of grid squares per tile. Must be a power of 4.')
+  .default('basezoom', 'minzoom of data.mbtiles')
+  .describe('basezoom', 'The zoom level *above* which to start building (data should already exist at z-basezoom).')
   .help('h')
   .argv
 
@@ -25,7 +30,7 @@ var bar
 argv.progress = function (tiles, total, features, nextTile) {
   if (!bar || total !== bar.total) {
     bar = new ProgressBar(
-      'tile::nextTile [:bar] :percent :elapsed/:etas [:featureavg feats/tile] [:tileRate tiles/min]', {
+      'tile::nextTile [:bar] :percent ETA :etas [:featureavg feats/tile] [:tileRate tiles/s]', {
       width: 20,
       total: total
     })
@@ -35,7 +40,7 @@ argv.progress = function (tiles, total, features, nextTile) {
     features: features,
     featureavg: tiles > 0 ? Math.round(features / tiles) : 'n/a',
     nextTile: nextTile.join('/'),
-    tileRate: Math.round(100 * 60000 * tiles / (new Date() - bar.start)) / 100
+    tileRate: Math.round(100 * 1000 * tiles / (new Date() - bar.start)) / 100
   })
 }
 
@@ -43,21 +48,18 @@ var mbtiles = new MBTiles('mbtiles://' + input, function (err) {
   if (err) { throw err }
   mbtiles.getInfo(function (err, info) {
     if (err) { throw err }
-    if (!argv.layer) {
-      argv.layer = info.vector_layers[0].id
-    }
-    if (!argv.basezoom) {
+    if (typeof argv.basezoom !== 'number') {
       argv.basezoom = info.minzoom
     }
     argv.layers = {}
-    argv.layers[argv.layer] = { }
     argv.fields.forEach(function (field) {
-      // outField:func(inField)
+      // layer:func(inField)
       var match = /([^:]+):([^\(]+)\((.*)\)/.exec(field)
-      var outField = match[1]
+      var layer = match[1]
       var fn = match[2]
-      var inField = match[3]
-      argv.layers[argv.layer][outField] = aggregate[fn](inField)
+      var fieldName = match[3]
+      if (!argv.layers[layer]) { argv.layers[layer] = {} }
+      argv.layers[layer][fieldName] = aggregate[fn](fieldName)
     })
 
     grid(mbtiles, argv, function (err) {

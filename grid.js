@@ -7,7 +7,7 @@ var tilebelt = require('tilebelt')
 var uniq = require('uniq')
 var queue = require('queue-async')
 var aggregate = require('geojson-polygon-aggregate')
-var list = require('./list')
+var list = require('./lib/list')
 var GeoJSONWrapper = require('./lib/geojson-wrapper')
 
 module.exports = grid
@@ -153,11 +153,7 @@ function readTileFeatures (db, tile, layers, callback) {
 
       for (var layerName in layers) {
         var layer = vt.layers[layerName]
-        if (!layer) {
-          var message = 'Layer ' + layerName + ' missing in ' + tile
-          message += '\nExisting layers: ' + Object.keys(vt.layers).join(',')
-          return callback(new Error(message))
-        }
+        if (!layer) { continue }
 
         var features = []
         for (var i = 0; i < layer.length; i++) {
