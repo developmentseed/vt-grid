@@ -4,17 +4,16 @@ var geojsonvt = require('geojson-vt')
 var VectorTile = require('vector-tile').VectorTile
 var Pbf = require('pbf')
 var tilebelt = require('tilebelt')
-var uniq = require('uniq')
 var queue = require('queue-async')
 var aggregate = require('geojson-polygon-aggregate')
-var list = require('./lib/list')
+var tiletree = require('./lib/tile-family')
 var GeoJSONWrapper = require('./lib/geojson-wrapper')
 
 module.exports = grid
 
 /**
  * @param {MBTiles} source
- * @param {number} opts.basezoom
+ * @param {Array} opts.tiles - the data tiles upon which to build the grid
  * @param {Object} opts.layers - Maps layer names to aggregation objects, which themselves map field names to aggregation functions as per geojson-polygon-aggregate.
  * @param {number} [opts.minzoom = 0]
  * @param {number} [opts.gridsize = 64]
@@ -29,29 +28,18 @@ function grid (source, opts, callback) {
   if (opts._depth !== (opts._depth | 0)) {
     throw new Error('Gridsize must be a power of 4')
   }
-  buildLevel(source, opts, opts.basezoom - 1, callback)
+
+  var tiles = tiletree.getAncestors(opts.tiles, opts.minzoom)
+  aggregateTiles(source, opts, tiles, callback)
 }
 
-function buildLevel (db, opts, z, callback) {
-  if (z < opts.minzoom || z >= opts.basezoom) { return callback() }
-  list(db, z + 1, function (err, tiles) {
-    if (err) { return callback(err) }
-    var parents = tiles.map(getParentTile)
-    // remove duplicates
-    parents = uniq(parents.map(join).sort()).map(split)
-    aggregateLevel(db, opts, parents, function (err) {
-      if (err) { return callback(err) }
-      buildLevel(db, opts, z - 1, callback)
-    })
-  })
-}
-
-function aggregateLevel (db, options, tiles, callback) {
+function aggregateTiles (db, options, levels, callback) {
+  if (levels.length === 0) { return callback() }
   db.startWriting(next)
 
   var featureCount = 0
-  var tileCount = -1
-  var total = tiles.length
+  var tileCount = 0
+  var tiles = levels.shift()
 
   function next (err, featuresRead) {
     if (err) { callback(err) }
@@ -59,12 +47,14 @@ function aggregateLevel (db, options, tiles, callback) {
 
     tileCount++
     featureCount += featuresRead || 0
-    if (options.progress) {
-      options.progress(tileCount, total, featureCount, tiles[0])
+    if (options.progress && tileCount % 10 === 0) {
+      options.progress(tileCount, featureCount)
+      tileCount = 0
+      featureCount = 0
     }
 
     var tile = tiles.shift()
-    var children = getTileChildren(tile)
+    var children = tiletree.getChildren(tile)
     var q = queue()
     children.forEach(function (t) {
       q.defer(readTileFeatures, db, t, options.layers)
@@ -77,8 +67,8 @@ function aggregateLevel (db, options, tiles, callback) {
 
   function done () {
     db.stopWriting(function (err) {
-      if (err) { callback(err) }
-      callback()
+      if (err) { return callback(err) }
+      aggregateTiles(db, options, levels, callback)
     })
   }
 }
@@ -102,6 +92,7 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
   // in the options, and then use geojson-vt to make the result into a
   // vector tile object.
   var aggregatedLayers = {}
+  var layerCount = 0
   for (var layer in featuresByLayer) {
     var tileIndex = geojsonvt({
       type: 'FeatureCollection',
@@ -113,7 +104,7 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
       indexMaxZoom: gz
     })
 
-    var progeny = getTileProgeny(tile, gz)
+    var progeny = tiletree.getProgeny(tile, gz)
     var boxes = []
     for (var i = 0; i < progeny.length; i++) {
       var t = tileIndex.getTile.apply(tileIndex, progeny[i])
@@ -123,31 +114,44 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
       var features = new Array(vt.length)
       for (var j = 0; j < vt.length; j++) {
         var feat = vt.feature(j)
-        features[j] = feat.toGeoJSON.apply(feat, toXYZ(progeny[i]))
+        features[j] = feat.toGeoJSON.apply(feat, tiletree.toXYZ(progeny[i]))
       }
 
       boxes.push({
         type: 'Feature',
         properties: aggregate(features, options.layers[layer]),
-        geometry: tilebelt.tileToGeoJSON(toXYZ(progeny[i]))
+        geometry: tilebelt.tileToGeoJSON(tiletree.toXYZ(progeny[i]))
       })
     }
 
-    aggregatedLayers[layer] = geojsonvt({
-      type: 'FeatureCollection',
-      features: boxes
-    }, {maxZoom: z}).getTile(tile[0], tile[1], tile[2])
+    if (boxes.length) {
+      aggregatedLayers[layer] = geojsonvt({
+        type: 'FeatureCollection',
+        features: boxes
+      }, {
+        maxZoom: z,
+        tolerance: 0,
+        buffer: 0,
+        indexMaxZoom: z
+      }).getTile(tile[0], tile[1], tile[2])
+
+      layerCount++
+    }
   }
 
   // serialize, compress, and save the tile
-  var buff = vtpbf.fromGeojsonVt(aggregatedLayers)
-  zlib.gzip(buff, function (err, zipped) {
-    if (err) { return next(err) }
-    db.putTile(tile[0], tile[1], tile[2], zipped, function (err) {
+  if (layerCount) {
+    var buff = vtpbf.fromGeojsonVt(aggregatedLayers)
+    zlib.gzip(buff, function (err, zipped) {
       if (err) { return next(err) }
-      next(null, featuresRead)
+      db.putTile(tile[0], tile[1], tile[2], zipped, function (err) {
+        if (err) { return next(err) }
+        next(null, featuresRead)
+      })
     })
-  })
+  } else {
+    next(null, featuresRead)
+  }
 }
 
 function readTileFeatures (db, tile, layers, callback) {
@@ -175,39 +179,3 @@ function readTileFeatures (db, tile, layers, callback) {
   })
 }
 
-function join (t) { return t.join('/') }
-function split (t) { return t.split('/').map(Number) }
-
-function getParentTile (tile) {
-  return toZXY(tilebelt.getParent(toXYZ(tile)))
-}
-
-function getTileChildren (tile) {
-  return tilebelt.getChildren(toXYZ(tile)).map(toZXY)
-}
-
-function getTileProgeny (tile, zoom) {
-  var z = tile[0]
-  var tiles = [toXYZ(tile)]
-  while (z < zoom) {
-    var c = 0
-    var nextTiles = new Array(tiles.length * 4)
-    for (var i = 0; i < tiles.length; i++) {
-      var children = tilebelt.getChildren(tiles[i])
-      for (var j = 0; j < 4; j++) {
-        nextTiles[c++] = children[j]
-      }
-    }
-    tiles = nextTiles
-    z++
-  }
-  return tiles.map(toZXY)
-}
-
-function toZXY (tile) {
-  return [tile[2], tile[0], tile[1]]
-}
-
-function toXYZ (tile) {
-  return [tile[1], tile[2], tile[0]]
-}

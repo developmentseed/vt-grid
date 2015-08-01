@@ -3,7 +3,10 @@ var path = require('path')
 var MBTiles = require('mbtiles')
 var aggregate = require('geojson-polygon-aggregate')
 var ProgressBar = require('progress')
+var xtend = require('xtend')
 var grid = require('./grid')
+var list = require('./lib/list')
+var tf = require('./lib/tile-family')
 
 var validAggregations = Object.keys(aggregate)
 
@@ -22,50 +25,65 @@ var argv = require('yargs')
   .help('h')
   .argv
 
-var input = argv._[0]
+var input = path.resolve(process.cwd(), argv._[0])
 
-input = path.resolve(process.cwd(), input)
-
-var bar
-argv.progress = function (tiles, total, features, nextTile) {
-  if (!bar || total !== bar.total) {
-    bar = new ProgressBar(
-      'tile::nextTile [:bar] :percent ETA :etas [:featureavg feats/tile] [:tileRate tiles/s]', {
-      width: 20,
-      total: total
-    })
-  }
-
-  bar.update(tiles / total, {
-    features: features,
-    featureavg: tiles > 0 ? Math.round(features / tiles) : 'n/a',
-    nextTile: nextTile.join('/'),
-    tileRate: Math.round(100 * 1000 * tiles / (new Date() - bar.start)) / 100
-  })
-}
+var options = xtend({}, argv)
 
 var mbtiles = new MBTiles('mbtiles://' + input, function (err) {
   if (err) { throw err }
   mbtiles.getInfo(function (err, info) {
     if (err) { throw err }
-    if (typeof argv.basezoom !== 'number') {
-      argv.basezoom = info.minzoom
+    if (typeof options.basezoom !== 'number') {
+      options.basezoom = info.minzoom
     }
-    argv.layers = {}
-    argv.fields.forEach(function (field) {
-      // layer:func(inField)
-      var match = /([^:]+):([^\(]+)\((.*)\)/.exec(field)
-      var layer = match[1]
-      var fn = match[2]
-      var fieldName = match[3]
-      if (!argv.layers[layer]) { argv.layers[layer] = {} }
-      argv.layers[layer][fieldName] = aggregate[fn](fieldName)
-    })
-
-    grid(mbtiles, argv, function (err) {
-      bar.terminate()
+    list(mbtiles, options.basezoom, function (err, tiles) {
       if (err) { throw err }
-      console.log('Finished!')
+      options.tiles = tiles
+
+      var total = tf.getAncestors(tiles, options.minzoom)
+        .map(function (l) { return l.length })
+        .reduce(function (s, level) { return (s || 0) + level })
+      console.log('total', total)
+
+      var bar = new ProgressBar(
+        '[:bar] :percent ETA :etas [:featureavg feats/tile] [:tileRate tiles/s]', {
+        width: 20,
+        total: total
+      })
+      var totalFeatures = 0
+      options.progress = function (tiles, features) {
+        totalFeatures += features
+        var totalTiles = bar.curr
+        var deltaT = (new Date() - bar.start) / 1000
+        bar.tick(tiles, {
+          features: features,
+          featureavg: totalTiles > 0 ? Math.round(totalFeatures / totalTiles) : 'n/a',
+          tileRate: Math.round(100 * totalTiles / deltaT) / 100
+        })
+      }
+
+      run(options)
+      mbtiles = null
     })
   })
 })
+
+function run (options) {
+  options.layers = {}
+  argv.fields.forEach(function (field) {
+    // layer:func(inField)
+    var match = /([^:]+):([^\(]+)\((.*)\)/.exec(field)
+    var layer = match[1]
+    var fn = match[2]
+    var fieldName = match[3]
+    if (!options.layers[layer]) { options.layers[layer] = {} }
+    options.layers[layer][fieldName] = aggregate[fn](fieldName)
+  })
+
+  console.log(JSON.stringify(options, 2))
+
+  grid(mbtiles, options, function (err) {
+    if (err) { throw err }
+    console.log('Finished!')
+  })
+}
