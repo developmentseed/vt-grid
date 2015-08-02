@@ -42,15 +42,18 @@ argv.fields.forEach(function (field) {
 
 var mbtiles = new MBTiles(input, function (err) {
   if (err) { throw err }
-  mbtiles.getInfo(function (err, info) {
+  mbtiles._db.run('PRAGMA journal_mode=WAL', function (err) {
     if (err) { throw err }
-    if (typeof argv.basezoom !== 'number') {
-      argv.basezoom = info.minzoom
-    }
-    list(mbtiles, argv.basezoom, function (err, tiles) {
+    mbtiles.getInfo(function (err, info) {
       if (err) { throw err }
-      run(tiles)
-      mbtiles = null
+      if (typeof argv.basezoom !== 'number') {
+        argv.basezoom = info.minzoom
+      }
+      list(mbtiles, argv.basezoom, function (err, tiles) {
+        if (err) { throw err }
+        run(tiles)
+        mbtiles = null
+      })
     })
   })
 })
@@ -86,7 +89,7 @@ function run (tiles) {
   // progress bar
   if (!bar) {
     var total = ancestors.map(function (l) { return l.length })
-      .reduce(function (s, level) { return (s || 0) + level })
+    total = total.reduce(function (s, level) { return (s || 0) + level })
     bar = new ProgressBar([
         '[:bar] :percent',
         'ETA :etas',
@@ -121,7 +124,7 @@ function run (tiles) {
 
       if (--activeJobs === 0) {
         if (options.minzoom === argv.minzoom) {
-          console.log('Finished!')
+          console.log('\nFinished!')
           bar.terminate()
           process.exit()
         }
@@ -139,6 +142,6 @@ function run (tiles) {
 
 function job (baseOptions, batches, index, jobs) {
   var batch = batches.filter(function (b, i) { return i % jobs === index })
-  var tiles = baseOptions.tiles.filter(tf.hasProgeny.bind(null, batch))
+  var tiles = baseOptions.tiles.filter(tf.hasProgeny(batch))
   return xtend(baseOptions, { tiles: tiles })
 }
