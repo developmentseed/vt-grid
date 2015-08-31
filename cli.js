@@ -37,7 +37,10 @@ argv.fields.forEach(function (field) {
   var fn = match[2]
   var fieldName = match[3]
   if (!layers[layer]) { layers[layer] = {} }
-  layers[layer][fieldName] = aggregate[fn](fieldName)
+  layers[layer][fieldName] = fn
+  if (validAggregations.indexOf(fn) < 0) {
+    throw new Error('Unknown aggregation function: ' + fn)
+  }
 })
 
 var mbtiles = new MBTiles(input, function (err) {
@@ -91,12 +94,12 @@ function run (tiles) {
     var total = ancestors.map(function (l) { return l.length })
     total = total.reduce(function (s, level) { return (s || 0) + level })
     bar = new ProgressBar([
-        '[:bar] :percent',
-        'ETA :etas',
-        '[:featureavg feats/tile]',
-        '[:tileRate tiles/s]',
-        '[:jobs jobs]'
-      ].join(' '), { width: 20, total: total })
+      '[:bar] :percent',
+      'ETA :etas',
+      '[:featureavg feats/tile]',
+      '[:tileRate tiles/s]',
+      '[:jobs jobs]'
+    ].join(' '), { width: 20, total: total })
   }
 
   // progress callback

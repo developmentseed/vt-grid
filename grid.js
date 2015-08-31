@@ -122,6 +122,9 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
         properties: aggregate(features, options.layers[layer]),
         geometry: tilebelt.tileToGeoJSON(tiletree.toXYZ(progeny[i]))
       })
+
+      // console.log('first feature', features[0])
+      // console.log('aggregated', aggregate(features, options.layers[layer]))
     }
 
     if (boxes.length) {
