@@ -55,7 +55,6 @@ var mbtiles = new MBTiles(input, function (err) {
       list(mbtiles, argv.basezoom, function (err, tiles) {
         if (err) { throw err }
         run(tiles)
-        mbtiles = null
       })
     })
   })
@@ -129,7 +128,7 @@ function run (tiles) {
         if (options.minzoom === argv.minzoom) {
           console.log('\nFinished!')
           bar.terminate()
-          process.exit()
+          return done()
         }
         argv.jobs = Math.max(Math.floor(argv.jobs / 4), 1)
         run(ancestors[serial])
@@ -141,6 +140,18 @@ function run (tiles) {
     child.on('error', function (e) { throw e })
     child.send(job(options, ancestors[serial], i, argv.jobs))
   }
+}
+
+function done () {
+  mbtiles._db.run('PRAGMA journal_mode=DELETE', function (err) {
+    if (err) { throw err }
+    mbtiles._db.run('UPDATE metadata SET value=? WHERE name=?', argv.minzoom,
+      'minzoom', function (err) {
+        if (err) { throw err }
+        process.exit()
+      }
+    )
+  })
 }
 
 function job (baseOptions, batches, index, jobs) {
