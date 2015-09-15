@@ -7,11 +7,12 @@ var tf = require('./lib/tile-family')
 
 /**
  * @param {string} opts.input An 'mbtiles://' uri to the input data
- * @param {number} opts.basezoom
- * @param {number} opts.gridsize
- * @param {number} opts.minzoom
- * @param {Object} opts.layers
- * @param {number} opts.jobs
+ * @param {number} opts.basezoom The zoom level at which to find the initial data
+ * @param {number} opts.gridsize Number of grid squares per tile
+ * @param {number} opts.minzoom Build the aggregated pyramid to this zoom level
+ * @param {Object|string} opts.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate, passing it the field name as an argument.  If a string, then it's the path of a module that exports an object mapping layer names to field names to custom geojson-polygon-aggregate style aggregation functions.
+ * @param {number} opts.jobs The number of jobs to try to run in parallel. Note that once the zoom level gets low enough, the degree of parallelization will be reduced.
+ * @param {boolean} opts['no-progress']
  */
 module.exports = function (opts, done) {
   if (!done) {
@@ -87,7 +88,7 @@ module.exports = function (opts, done) {
 
     var options = {
       tiles: tiles,
-      layers: opts.layers,
+      aggregations: opts.aggregations,
       minzoom: basezoom - 1 - serial,
       gridsize: opts.gridsize,
       input: opts.input

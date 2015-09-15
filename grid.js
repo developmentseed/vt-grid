@@ -1,3 +1,4 @@
+var path = require('path')
 var zlib = require('zlib')
 var vtpbf = require('vt-pbf')
 var geojsonvt = require('geojson-vt')
@@ -14,16 +15,19 @@ module.exports = grid
 /**
  * @param {MBTiles} source
  * @param {Array} opts.tiles - the data tiles upon which to build the grid
- * @param {Object} opts.layers - Maps layer names to aggregation objects, which themselves map field names to aggregation functions as per geojson-polygon-aggregate.
+ * @param {Object|string} opts.aggregations - If an object, maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate style aggregation functions. If a string, then it should be the path of a module that exports such an object.
  * @param {number} [opts.minzoom = 0]
- * @param {number} [opts.gridsize = 64]
+ * @param {number} [opts.gridsize = 1024]
  * @param {function} callback
  */
 function grid (source, opts, callback) {
   if (!callback) { callback = function () {} }
+  if (typeof opts.aggregations === 'string') {
+    opts.aggregations = require(path.resolve(process.cwd(), opts.aggregations))
+  }
   opts.minzoom = Math.max(0, opts.minzoom)
   opts.basezoom = Math.max(opts.minzoom, opts.basezoom)
-  opts.gridsize = +(opts.gridsize || 64)
+  opts.gridsize = +(opts.gridsize || 1024)
   opts._depth = Math.log2(opts.gridsize) / 2
   if (opts._depth !== (opts._depth | 0)) {
     throw new Error('Gridsize must be a power of 4')
@@ -57,7 +61,7 @@ function aggregateTiles (db, options, levels, callback) {
     var children = tiletree.getChildren(tile)
     var q = queue()
     children.forEach(function (t) {
-      q.defer(readTileFeatures, db, t, options.layers)
+      q.defer(readTileFeatures, db, t, options.aggregations)
     })
     q.awaitAll(function (err, tileFeatures) {
       if (err) { return next(err) }
@@ -119,7 +123,7 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
 
       var box = {
         type: 'Feature',
-        properties: aggregate(features, options.layers[layer]),
+        properties: aggregate(features, options.aggregations[layer]),
         geometry: tilebelt.tileToGeoJSON(tiletree.toXYZ(progeny[i]))
       }
 
