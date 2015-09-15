@@ -12,6 +12,7 @@ process.on('message', function (options) {
       options.layers[layer][field] = fn(field)
     }
   }
+
   var mbtiles = new MBTiles(options.input, function (err) {
     if (err) { throw err }
     grid(mbtiles, options, function (err) {

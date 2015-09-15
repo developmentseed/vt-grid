@@ -117,14 +117,13 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
         features[j] = feat.toGeoJSON.apply(feat, tiletree.toXYZ(progeny[i]))
       }
 
-      boxes.push({
+      var box = {
         type: 'Feature',
         properties: aggregate(features, options.layers[layer]),
         geometry: tilebelt.tileToGeoJSON(tiletree.toXYZ(progeny[i]))
-      })
+      }
 
-      // console.log('first feature', features[0])
-      // console.log('aggregated', aggregate(features, options.layers[layer]))
+      boxes.push(box)
     }
 
     if (boxes.length) {
