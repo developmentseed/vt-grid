@@ -6,10 +6,12 @@ process.on('message', function (options) {
     process.send({ progress: Array.prototype.slice.call(arguments) })
   }
   // aggregation functions were passed in as names.  look up the actual functions.
-  for (var layer in options.layers) {
-    for (var field in options.layers[layer]) {
-      var fn = aggregate[options.layers[layer][field]]
-      options.layers[layer][field] = fn(field)
+  if (typeof options.layers !== 'string') {
+    for (var layer in options.layers) {
+      for (var field in options.layers[layer]) {
+        var fn = aggregate[options.layers[layer][field]]
+        options.layers[layer][field] = fn(field)
+      }
     }
   }
 

@@ -6,11 +6,12 @@ var vtGrid = require('./')
 var validAggregations = Object.keys(require('geojson-polygon-aggregate'))
 
 var argv = require('yargs')
-  .usage('$0 data.mbtiles [--minzoom 7] [--basezoom 12] [--gridsize 1024] --fields \'layerName:areaWeightedMean(fieldName)\' \'layerName:count()\'')
+  .usage('$0 data.mbtiles [--minzoom 7] [--basezoom 12] [--gridsize 1024] --aggregations \'layerName:areaWeightedMean(fieldName)\' \'layerName:count()\'')
   .demand(1)
-  .array('fields')
-  .demand('fields')
-  .describe('fields', 'The aggregations to perform, in the form \'layerName:aggregationFunction(fieldName)\',  aggregationFunction is one of: ' + validAggregations.join(', '))
+  .array('aggregations')
+  .demand('aggregations')
+  .describe('aggregations', 'The aggregations to perform, either as a js module (see docs), or in the form \'layerName:aggregationFunction(fieldName)\',  aggregationFunction is one of: ' + validAggregations.join(', '))
+  .describe('postAggregations', 'Module exporting post-aggregation functions to apply (see docs for details).')
   .default('minzoom', 1)
   .describe('minzoom', 'The lowest zoom level at which to build the grid.')
   .default('gridsize', 1024)
@@ -25,18 +26,24 @@ var argv = require('yargs')
   .argv
 
 argv.input = 'mbtiles://' + path.resolve(process.cwd(), argv._[0])
-argv.layers = {}
-argv.fields.forEach(function (field) {
-  // layer:func(inField)
-  var match = /([^:]+):([^\(]+)\((.*)\)/.exec(field)
-  var layer = match[1]
-  var fn = match[2]
-  var fieldName = match[3]
-  if (!argv.layers[layer]) { argv.layers[layer] = {} }
-  argv.layers[layer][fieldName] = fn
-  if (validAggregations.indexOf(fn) < 0) {
-    throw new Error('Unknown aggregation function: ' + fn)
-  }
-})
+if (argv.aggregations.length === 1 && /\.js/.test(argv.aggregations[0])) {
+  argv.aggregations = argv.aggregations[0]
+} else {
+  var aggregations = {}
+  argv.aggregations.forEach(function (field) {
+    // layer:func(inField)
+    var match = /([^:]+):([^\(]+)\((.*)\)/.exec(field)
+    var layer = match[1]
+    var fn = match[2]
+    var fieldName = match[3]
+    if (!argv.layers[layer]) { argv.layers[layer] = {} }
+    aggregations[layer][fieldName] = fn
+    if (validAggregations.indexOf(fn) < 0) {
+      throw new Error('Unknown aggregation function: ' + fn)
+    }
+  })
+
+  argv.aggregations = aggregations
+}
 
 vtGrid(argv)

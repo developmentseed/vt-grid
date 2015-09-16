@@ -14,17 +14,27 @@ module.exports = grid
 
 /**
  * @param {MBTiles} source
- * @param {Array} opts.tiles - the data tiles upon which to build the grid
- * @param {Object|string} opts.aggregations - If an object, maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate style aggregation functions. If a string, then it should be the path of a module that exports such an object.
- * @param {number} [opts.minzoom = 0]
- * @param {number} [opts.gridsize = 1024]
- * @param {function} callback
+ * @param {Object} opts
+ * @param {Array<Array<number>>} opts.tiles - the data tiles upon which to build the grid
+ * @param {Object|string} opts.aggregations - If an object, maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate style aggregation functions. If a string, then it should be the path of a module that exports such an object under the key `aggregations`.
+ * @param {string} [opts.postAggregations] - An object mapping layer names to { field1: fn1, field2: fn2 } objects, where fn1, fn2 are functions that are called on with the aggregated grid square features, and yield property values that will be set on those features, or else the path to a module exporting such an object under the key `postAggregations`.
+ * @param {number} [opts.minzoom]
+ * @param {number} [opts.gridsize]
+ * @param {Function} callback
  */
 function grid (source, opts, callback) {
   if (!callback) { callback = function () {} }
+
   if (typeof opts.aggregations === 'string') {
-    opts.aggregations = require(path.resolve(process.cwd(), opts.aggregations))
+    var mod = path.resolve(process.cwd(), opts.aggregations)
+    opts.aggregations = require(mod).aggregations
   }
+
+  if (typeof opts.postAggregations === 'string') {
+    mod = path.resolve(process.cwd(), opts.postAggregations)
+    opts.postAggregations = require(mod).postAggregations
+  }
+
   opts.minzoom = Math.max(0, opts.minzoom)
   opts.basezoom = Math.max(opts.minzoom, opts.basezoom)
   opts.gridsize = +(opts.gridsize || 1024)
@@ -125,6 +135,13 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
         type: 'Feature',
         properties: aggregate(features, options.aggregations[layer]),
         geometry: tilebelt.tileToGeoJSON(tiletree.toXYZ(progeny[i]))
+      }
+
+      if (options.postAggregations && options.postAggregations[layer]) {
+        for (var field in options.postAggregations[layer]) {
+          var fn = options.postAggregations[layer][field]
+          box.properties[field] = fn(box)
+        }
       }
 
       boxes.push(box)

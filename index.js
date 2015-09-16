@@ -1,3 +1,4 @@
+var os = require('os')
 var fork = require('child_process').fork
 var MBTiles = require('mbtiles')
 var xtend = require('xtend')
@@ -5,19 +6,25 @@ var ProgressBar = require('progress')
 var list = require('./lib/list')
 var tf = require('./lib/tile-family')
 
+module.exports = vtGrid
+
 /**
+ * @param {Object} opts
  * @param {string} opts.input An 'mbtiles://' uri to the input data
  * @param {number} opts.basezoom The zoom level at which to find the initial data
  * @param {number} opts.gridsize Number of grid squares per tile
  * @param {number} opts.minzoom Build the aggregated pyramid to this zoom level
- * @param {Object|string} opts.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate, passing it the field name as an argument.  If a string, then it's the path of a module that exports an object mapping layer names to field names to custom geojson-polygon-aggregate style aggregation functions.
+ * @param {Object|string} opts.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see {@link #grid} for details).
+ * @param {string} [opts.postAggregations] - Path to a module mapping layer names to postAggregations objects.  See {@link #grid} for details.
  * @param {number} opts.jobs The number of jobs to try to run in parallel. Note that once the zoom level gets low enough, the degree of parallelization will be reduced.
- * @param {boolean} opts['no-progress']
+ * @param {boolean} opts.no-progress
  */
-module.exports = function (opts, done) {
+function vtGrid (opts, done) {
   if (!done) {
     done = function (err) { if (err) { throw err } }
   }
+
+  if (!opts.jobs) { opts.jobs = os.cpus().length }
 
   var mbtiles = new MBTiles(opts.input, function (err) {
     if (err) { return done(err) }
@@ -26,12 +33,12 @@ module.exports = function (opts, done) {
     mbtiles._db.run('PRAGMA journal_mode=WAL', function (err) {
       if (err) { return done(err) }
       mbtiles.getInfo(function (err, info) {
-        if (err) { return done(err) }
+        if (err) { return cleanup(err) }
         if (typeof opts.basezoom !== 'number') {
           opts.basezoom = info.minzoom
         }
         list(mbtiles, opts.basezoom, function (err, tiles) {
-          if (err) { return done(err) }
+          if (err) { return cleanup(err) }
           run(tiles)
         })
       })
@@ -106,10 +113,7 @@ module.exports = function (opts, done) {
 
         if (--activeJobs <= 0) {
           if (options.minzoom === opts.minzoom) {
-            if (bar) {
-              console.log('\nFinished!')
-              bar.terminate()
-            }
+            if (bar) { bar.terminate() }
             return cleanup()
           }
 
@@ -152,15 +156,15 @@ module.exports = function (opts, done) {
         })
     })
   }
+}
 
-  // set up the options object for a single worker
-  // important thing here is that we choose a 'batch' (aka a set of ancestor
-  // tiles), and then filter the tiles processed by this job to be the
-  // descendants of the batch.  that way, we can go up the pyramid in parallel
-  // TODO: explain this clearly
-  function job (baseOptions, batches, index, jobs) {
-    var batch = batches.filter(function (b, i) { return i % jobs === index })
-    var tiles = baseOptions.tiles.filter(tf.hasProgeny(batch))
-    return xtend(baseOptions, { tiles: tiles })
-  }
+// set up the options object for a single worker
+// important thing here is that we choose a 'batch' (aka a set of ancestor
+// tiles), and then filter the tiles processed by this job to be the
+// descendants of the batch.  that way, we can go up the pyramid in parallel
+// TODO: explain this clearly
+function job (baseOptions, batches, index, jobs) {
+  var batch = batches.filter(function (b, i) { return i % jobs === index })
+  var tiles = baseOptions.tiles.filter(tf.hasProgeny(batch))
+  return xtend(baseOptions, { tiles: tiles })
 }
