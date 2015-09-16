@@ -30,11 +30,12 @@ npm install -g vt-grid
 
 ## Usage
 
-To start, you'll need an `mbtiles` file containing the original polygon data at
+To start, you'll need an `mbtiles` file containing the original feature data at
 some (high) zoom level.  If you've got the data in, say, a shapefile or
 PostGIS, you can use Mapbox Studio to create a source and then export to
-MBTiles -- just set the min and max zoom to something high enough, and,
-importantly, set the buffer to 0.
+MBTiles -- just set the min and max zoom to something high enough.
+
+### CLI
 
 Let's say you've got the data in `data.mbtiles`, at zoom 12 in a layer called
 `'foo'`, and each polygon in this layer has a field called `density`. Then, you
@@ -42,13 +43,13 @@ can build the grid pyramid above this base layer with:
 
 ```sh
 vt-grid data.mbtiles --basezoom 12 --minzoom 1 --gridsize 16 --layer foo \
- --fields 'density:areaWeightedMean(density)'
+ --aggregations 'areaWeightedMean(density)'
 ```
 
 Starting at zoom 11 and going down to zoom 1, this will build a 16x16 grid in
 each tile, aggregating the data from the zoom level above.  The aggregations
-are defined by the `--fields` parameters.  Each one is of the form:
-`outputField:aggregationFunction(inputField)`, where `aggregationFunction` can
+are defined by the `--aggregations` parameters.  Each one is of the form:
+`aggregationFunction(inputField)`, where `aggregationFunction` can
 be any of the built-in aggregations available in
 [`geojson-polygon-aggregate`](https://github.com/anandthakker/geojson-polygon-aggregate).
 So, in this case, we'll end up with a grid where each box has a `density`
@@ -61,13 +62,98 @@ With other aggregations, other stats.  For instance, we could have done:
 # first use count() to find out the number of polygons from the original
 # dataset being aggregated into each grid box at z11
 vt-grid data.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
-  --fields 'density:areaWeightedMean(density)' 'numzones:count()'
+  --aggregations 'areaWeightedMean(density)' 'count(numzones)'
 
 # now, for z10 and below, sum the counts
 vt-grid data.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
-  --fields 'density:areaWeightedMean(density)' 'numzones:sum(numzones)'
+  --aggregations 'areaWeightedMean(density)' 'sum(numzones)'
 ```
 
+### Node
+
+You can have a little more flexibility with aggregations (and post-aggregation
+functions) by using vt-grid programmatically:
+
+```javascript
+var path = require('path')
+var vtGrid = require('vt-grid')
+var aggregate = require('geojson-polygon-aggregate')
+
+if (require.main === module) {
+  vtGrid({
+    input: 'mbtiles://' + path.resolve(process.cwd(), process.argv[2]),
+    minzoom: 1,
+    basezoom: 10,
+    aggregations: __filename, // this can be any file that exports an `aggregations` object like the one below
+    postAggregations: __filename // same for this
+  }, function (err) {
+    if (err) { throw err }
+    console.log('Finished!')
+  })
+}
+
+module.exports = {
+  aggregations: {
+    footprints: {
+      FID: aggregate.union('FID'),
+      someField: function myCustomAggregator (memo, feature) {
+        var newMemo = -1
+        // do stuff, works like an Array.reduce() function
+        return newMemo
+      }
+    }
+  },
+  postAggregations: {
+    footprints: {
+      // called on each grid square feature after all aggregations are run, with
+      // the result added to its properties under the given key (unique_count)
+      unique_count: function (feature) {
+        return feature.properties.FID ? JSON.parse(feature.properties.FID).length : 0
+      }
+    }
+  }
+}
+```
+
+This yields features that look like:
+
+```json
+{
+  "type": "Feature",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -111.09375,
+          40.97989806962016
+        ],
+        [
+          -111.09375,
+          40.9964840143779
+        ],
+        [
+          -111.07177734375,
+          40.9964840143779
+        ],
+        [
+          -111.07177734375,
+          40.97989806962016
+        ],
+        [
+          -111.09375,
+          40.97989806962016
+        ]
+      ]
+    ]
+  },
+  "properties": {
+    "FID": "[59, 707, 1002]",
+    "unique_count": 3,
+    "someField": -1
+  }
+}
+```
 
 ## Built With
 
