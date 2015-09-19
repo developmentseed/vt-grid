@@ -1,3 +1,4 @@
+
 var os = require('os')
 var fork = require('child_process').fork
 var MBTiles = require('mbtiles')
@@ -96,6 +97,7 @@ function vtGrid (opts, done) {
     var options = {
       tiles: tiles,
       aggregations: opts.aggregations,
+      postAggregations: opts.postAggregations,
       minzoom: basezoom - 1 - serial,
       gridsize: opts.gridsize,
       input: opts.input

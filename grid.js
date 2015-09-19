@@ -36,7 +36,6 @@ function grid (source, opts, callback) {
   }
 
   opts.minzoom = Math.max(0, opts.minzoom)
-  opts.basezoom = Math.max(opts.minzoom, opts.basezoom)
   opts.gridsize = +(opts.gridsize || 1024)
   opts._depth = Math.log2(opts.gridsize) / 2
   if (opts._depth !== (opts._depth | 0)) {
