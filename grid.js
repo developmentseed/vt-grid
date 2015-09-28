@@ -143,6 +143,7 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
         }
       }
 
+      box.properties._quadKey = tilebelt.tileToQuadkey(tiletree.toXYZ(progeny[i]))
       boxes.push(box)
     }
 
