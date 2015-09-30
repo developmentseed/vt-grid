@@ -36,7 +36,7 @@ if (argv.aggregations.length === 1 && /\.js/.test(argv.aggregations[0])) {
     var layer = match[1]
     var fn = match[2]
     var fieldName = match[3]
-    if (!argv.layers[layer]) { argv.layers[layer] = {} }
+    if (!aggregations[layer]) { aggregations[layer] = {} }
     aggregations[layer][fieldName] = fn
     if (validAggregations.indexOf(fn) < 0) {
       throw new Error('Unknown aggregation function: ' + fn)
