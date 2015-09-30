@@ -12,9 +12,12 @@ it.  Vector tiles are great for this--especially with
 
 But if your data is at a fine resolution and you don't want to be limited to
 very high zoom levels, you're stuck using standard simplification techniques.
-For some kinds of data this is just fine, but it's not ideal here: for
-instance, in simplification many small, high-density polygons get dropped, even
-though these are often important features.
+(Or, much better, the rather badass and blazingly fast simplification and point
+dropping techniques offered by
+[tippecanoe](https://github.com/mapbox/tippecanoe)). For many cases, this works
+great, but it's not ideal here: for instance, in simplification many small,
+high-density polygons get dropped, even though these are often important
+features.
 
 This tool is an alternative to simplification: using a grid whose resolution
 varies with zoom level, aggregate the quantitative features of interest, so
