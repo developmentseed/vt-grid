@@ -68,7 +68,7 @@ function aggregateTiles (dest, src, options, levels, callback) {
   var tiles = levels[0]
 
   function next (err, featuresRead) {
-    if (err) { callback(err) }
+    if (err) { return callback(err) }
     if (!tiles.length) { return done() }
 
     tileCount++
@@ -92,7 +92,7 @@ function aggregateTiles (dest, src, options, levels, callback) {
   }
 
   function done () {
-    dest.stopWriting(function (err) {
+    dest._commit(function (err) {
       if (err) { return callback(err) }
       // we've built the lowest layer of the pyramid we were given. now recurse
       // with the rest.  Use `dest` as the source too, since after the first
