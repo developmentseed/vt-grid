@@ -15,13 +15,16 @@ process.on('message', function (options) {
     }
   }
 
-  var mbtiles = new MBTiles(options.input, function (err) {
+  var input = new MBTiles(options.input, function (err) {
     if (err) { throw err }
-    // set a busy timeout to avoid SQLITE_BUSY
-    mbtiles._db.configure('busyTimeout', 30000)
-    grid(mbtiles, options, function (err) {
+    var output = new MBTiles(options.output, function (err) {
       if (err) { throw err }
-      process.exit()
+      // set a busy timeout to avoid SQLITE_BUSY
+      output._db.configure('busyTimeout', 30000)
+      grid(output, input, options, function (err) {
+        if (err) { throw err }
+        process.exit()
+      })
     })
   })
 })

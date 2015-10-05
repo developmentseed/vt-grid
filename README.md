@@ -45,7 +45,7 @@ Let's say you've got the data in `data.mbtiles`, at zoom 12 in a layer called
 can build the grid pyramid above this base layer with:
 
 ```sh
-vt-grid data.mbtiles --basezoom 12 --minzoom 1 --gridsize 16 --layer foo \
+vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 1 --gridsize 16 --layer foo \
  --aggregations 'areaWeightedMean(density)'
 ```
 
@@ -64,11 +64,11 @@ With other aggregations, other stats.  For instance, we could have done:
 ```sh
 # first use count() to find out the number of polygons from the original
 # dataset being aggregated into each grid box at z11
-vt-grid data.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
+vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
   --aggregations 'areaWeightedMean(density)' 'count(numzones)'
 
 # now, for z10 and below, sum the counts
-vt-grid data.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
+vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
   --aggregations 'areaWeightedMean(density)' 'sum(numzones)'
 ```
 
@@ -85,6 +85,7 @@ var aggregate = require('geojson-polygon-aggregate')
 if (require.main === module) {
   vtGrid({
     input: 'mbtiles://' + path.resolve(process.cwd(), process.argv[2]),
+    output: 'mbtiles://path/to/output.mbtiles',
     minzoom: 1,
     basezoom: 10,
     aggregations: __filename, // this can be any file that exports an `aggregations` object like the one below

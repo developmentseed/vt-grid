@@ -12,6 +12,7 @@ module.exports = vtGrid
 /**
  * @param {Object} opts
  * @param {string} opts.input An 'mbtiles://' uri to the input data
+ * @param {string} opts.putput An 'mbtiles://' uri to which to output aggregated data
  * @param {number} opts.basezoom The zoom level at which to find the initial data
  * @param {number} opts.gridsize Number of grid squares per tile
  * @param {number} opts.minzoom Build the aggregated pyramid to this zoom level
@@ -27,20 +28,24 @@ function vtGrid (opts, done) {
 
   if (!opts.jobs) { opts.jobs = os.cpus().length }
 
-  var mbtiles = new MBTiles(opts.input, function (err) {
+  var input
+  var output = new MBTiles(opts.output, function (err) {
     if (err) { return done(err) }
-    // WAL mode allows efficient parallel writes
-    // https://www.sqlite.org/wal.html
-    mbtiles._db.run('PRAGMA journal_mode=WAL', function (err) {
+    input = new MBTiles(opts.input, function (err) {
       if (err) { return done(err) }
-      mbtiles.getInfo(function (err, info) {
-        if (err) { return cleanup(err) }
-        if (typeof opts.basezoom !== 'number') {
-          opts.basezoom = info.minzoom
-        }
-        list(mbtiles, opts.basezoom, function (err, tiles) {
+      // WAL mode allows writers not to block readers
+      // https://www.sqlite.org/wal.html
+      output._db.run('PRAGMA journal_mode=WAL', function (err) {
+        if (err) { return done(err) }
+        input.getInfo(function (err, info) {
           if (err) { return cleanup(err) }
-          run(tiles)
+          if (typeof opts.basezoom !== 'number') {
+            opts.basezoom = info.minzoom
+          }
+          list(input, opts.basezoom, function (err, tiles) {
+            if (err) { return cleanup(err) }
+            run(tiles)
+          })
         })
       })
     })
@@ -99,8 +104,10 @@ function vtGrid (opts, done) {
       aggregations: opts.aggregations,
       postAggregations: opts.postAggregations,
       minzoom: basezoom - 1 - serial,
+      basezoom: opts.basezoom,
       gridsize: opts.gridsize,
-      input: opts.input
+      input: opts.input,
+      output: opts.output
     }
 
     // kick off the workers
@@ -110,7 +117,7 @@ function vtGrid (opts, done) {
       var child = fork(__dirname + '/worker.js')
       child.on('exit', function (e) {
         if (e !== 0) {
-          return done(new Error('Worker exited with nonzero status ' + e))
+          return cleanup(new Error('Worker exited with nonzero status ' + e))
         }
 
         if (--activeJobs <= 0) {
@@ -140,15 +147,18 @@ function vtGrid (opts, done) {
     }
   }
 
+  var _cleanedUp = false
   function cleanup (error) {
-    mbtiles._db.run('PRAGMA journal_mode=DELETE', function (err) {
+    if (_cleanedUp) { return }
+    _cleanedUp = true
+    output._db.run('PRAGMA journal_mode=DELETE', function (err) {
       if (err) {
         if (error) { console.error(error) }
         return done(err)
       }
       // if there's a minzoom set in the db, we need to update it, since we've
       // added lower-zoom tiles
-      mbtiles._db.run('UPDATE metadata SET value=? WHERE name=?', opts.minzoom,
+      output._db.run('UPDATE metadata SET value=? WHERE name=?', opts.minzoom,
         'minzoom', function (err) {
           if (err) {
             if (error) { console.error(error) }

@@ -13,16 +13,18 @@ var GeoJSONWrapper = require('./lib/geojson-wrapper')
 module.exports = grid
 
 /**
+ * @param {MBTiles} dest
  * @param {MBTiles} source
  * @param {Object} opts
  * @param {Array<Array<number>>} opts.tiles - the data tiles upon which to build the grid
  * @param {Object|string} opts.aggregations - If an object, maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate style aggregation functions. If a string, then it should be the path of a module that exports such an object under the key `aggregations`.
  * @param {string} [opts.postAggregations] - An object mapping layer names to { field1: fn1, field2: fn2 } objects, where fn1, fn2 are functions that are called on with the aggregated grid square features, and yield property values that will be set on those features, or else the path to a module exporting such an object under the key `postAggregations`.
- * @param {number} [opts.minzoom]
+ * @param {number} opts.minzoom
+ * @param {number} opts.basezoom
  * @param {number} [opts.gridsize]
  * @param {Function} callback
  */
-function grid (source, opts, callback) {
+function grid (dest, source, opts, callback) {
   if (!callback) { callback = function () {} }
 
   if (typeof opts.aggregations === 'string') {
@@ -42,17 +44,28 @@ function grid (source, opts, callback) {
     throw new Error('Gridsize must be a power of 4')
   }
 
-  var tiles = tiletree.getAncestors(opts.tiles, opts.minzoom)
-  aggregateTiles(source, opts, tiles, callback)
+  var pyramid = tiletree.getAncestors(opts.tiles, opts.minzoom)
+
+  if (opts.tiles[0][0] !== opts.basezoom) {
+    source = dest
+  } else {
+    pyramid.unshift(opts.tiles)
+  }
+
+  aggregateTiles(dest, source, opts, pyramid, callback)
 }
 
-function aggregateTiles (db, options, levels, callback) {
+/**
+ * @param {Array} levels An array of pyramid levels, where each pyramid level is itself an array of coordinates of tiles that we want to build.
+ * @private
+ */
+function aggregateTiles (dest, src, options, levels, callback) {
   if (levels.length === 0) { return callback() }
-  db.startWriting(next)
+  dest.startWriting(next)
 
   var featureCount = 0
   var tileCount = 0
-  var tiles = levels.shift()
+  var tiles = levels[0]
 
   function next (err, featuresRead) {
     if (err) { callback(err) }
@@ -67,21 +80,24 @@ function aggregateTiles (db, options, levels, callback) {
     }
 
     var tile = tiles.shift()
-    var children = tiletree.getChildren(tile)
+    var children = tile[0] === options.basezoom ? [tile] : tiletree.getChildren(tile)
     var q = queue()
     children.forEach(function (t) {
-      q.defer(readTileFeatures, db, t, options.aggregations)
+      q.defer(readTileFeatures, src, t, options.aggregations)
     })
     q.awaitAll(function (err, tileFeatures) {
       if (err) { return next(err) }
-      writeAggregatedTile(db, options, tile, tileFeatures, next)
+      writeAggregatedTile(dest, options, tile, tileFeatures, next)
     })
   }
 
   function done () {
-    db.stopWriting(function (err) {
+    dest.stopWriting(function (err) {
       if (err) { return callback(err) }
-      aggregateTiles(db, options, levels, callback)
+      // we've built the lowest layer of the pyramid we were given. now recurse
+      // with the rest.  Use `dest` as the source too, since after the first
+      // level is built, we want to read from dest, not source
+      aggregateTiles(dest, dest, options, levels.slice(1), callback)
     })
   }
 }
@@ -186,11 +202,13 @@ function readTileFeatures (db, tile, layers, callback) {
       var result = {}
       var vt = new VectorTile(new Pbf(buff))
 
+      var count = 0
       for (var layerName in layers) {
         var layer = vt.layers[layerName]
         if (!layer) { continue }
 
         var features = []
+        count += layer.length
         for (var i = 0; i < layer.length; i++) {
           features.push(layer.feature(i).toGeoJSON(tile[1], tile[2], tile[0]))
         }
