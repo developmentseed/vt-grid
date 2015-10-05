@@ -52,6 +52,7 @@ function grid (dest, source, opts, callback) {
     pyramid.unshift(opts.tiles)
   }
 
+  // console.log(pyramid.map(function (l) { return l[0][0] + ':' + l.length }))
   aggregateTiles(dest, source, opts, pyramid, callback)
 }
 
@@ -74,7 +75,7 @@ function aggregateTiles (dest, src, options, levels, callback) {
     tileCount++
     featureCount += featuresRead || 0
     if (options.progress && tileCount % 10 === 0) {
-      options.progress(tileCount, featureCount)
+      options.progress(tileCount, featureCount, tiles[0].join('/'))
       tileCount = 0
       featureCount = 0
     }

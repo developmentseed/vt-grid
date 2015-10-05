@@ -81,13 +81,14 @@ function vtGrid (opts, done) {
         'ETA :etas',
         '[:featureavg feats/tile]',
         '[:tileRate tiles/s]',
-        '[:jobs jobs]'
+        '[:jobs jobs]',
+        '[ :lastTile ]'
       ].join(' '), { width: 20, total: total })
     }
 
     // progress callback
     var totalFeatures = 0
-    function progress (jobs, tiles, features) {
+    function progress (jobs, tiles, features, lastTile) {
       totalFeatures += features
       var totalTiles = bar.curr
       var deltaT = (new Date() - bar.start) / 1000
@@ -95,7 +96,8 @@ function vtGrid (opts, done) {
         jobs: jobs,
         features: features,
         featureavg: totalTiles > 0 ? Math.round(totalFeatures / totalTiles) : 'n/a',
-        tileRate: Math.round(100 * totalTiles / deltaT) / 100
+        tileRate: Math.round(100 * totalTiles / deltaT) / 100,
+        lastTile: lastTile
       })
     }
 
