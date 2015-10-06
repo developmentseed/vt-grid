@@ -10,6 +10,8 @@ var tf = require('./lib/tile-family')
 module.exports = vtGrid
 
 /**
+ * Build a pyramid of aggregated square-grid features.
+ *
  * @param {Object} opts
  * @param {string} opts.input An 'mbtiles://' uri to the input data
  * @param {string} opts.putput An 'mbtiles://' uri to which to output aggregated data
@@ -19,7 +21,8 @@ module.exports = vtGrid
  * @param {Object|string} opts.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see {@link #grid} for details).
  * @param {string} [opts.postAggregations] - Path to a module mapping layer names to postAggregations objects.  See {@link #grid} for details.
  * @param {number} opts.jobs The number of jobs to try to run in parallel. Note that once the zoom level gets low enough, the degree of parallelization will be reduced.
- * @param {boolean} opts.no-progress
+ * @param {boolean} opts.progress Display a progress bar (uses stderr)
+ * @param {function} done called with (err) when done
  */
 function vtGrid (opts, done) {
   if (!done) {
@@ -27,6 +30,9 @@ function vtGrid (opts, done) {
   }
 
   if (!opts.jobs) { opts.jobs = os.cpus().length }
+  if (typeof opts.progress === 'undefined') {
+    opts.progress = true
+  }
 
   var input
   var output = new MBTiles(opts.output, function (err) {
@@ -73,7 +79,7 @@ function vtGrid (opts, done) {
     }
 
     // progress bar
-    if (!bar && !opts['no-progress']) {
+    if (!bar && opts.progress) {
       var total = ancestors.map(function (l) { return l.length })
       total = total.reduce(function (s, level) { return (s || 0) + level })
       total += tiles.length

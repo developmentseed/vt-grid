@@ -20,8 +20,9 @@ var argv = require('yargs')
   .describe('basezoom', 'The zoom level at which to start building (initial data should exist at z-basezoom in input.mbtiles).')
   .default('jobs', os.cpus().length)
   .describe('jobs', 'The number of concurrent processes to run')
-  .boolean('no-progress')
-  .describe('no-progress', 'Don\'t show progress bar')
+  .boolean('progress')
+  .describe('progress', 'Show progress bar')
+  .default('progress', true)
   .help('h')
   .argv
 

@@ -1,4 +1,5 @@
 # vt-grid
+
 Build up a pyramid of [Mapbox vector
 tiles](https://github.com/mapbox/vector-tile-spec) by aggregating quantitative
 data into grids at lower zooms.
@@ -23,13 +24,11 @@ This tool is an alternative to simplification: using a grid whose resolution
 varies with zoom level, aggregate the quantitative features of interest, so
 that you can visualize the spatial distribution of your data at any scale.
 
-
 ## Installation
 
 ```sh
 npm install -g vt-grid
 ```
-
 
 ## Usage
 
@@ -159,11 +158,43 @@ This yields features that look like:
 }
 ```
 
+## API
+
+### vtGrid
+
+Build a pyramid of aggregated square-grid features.
+
+
+**Parameters**
+
+-   `opts` **Object** 
+    -   `opts.putput` **string** An 'mbtiles://' uri to which to output aggregated data
+
+    -   `opts.basezoom` **number** The zoom level at which to find the initial data
+
+    -   `opts.gridsize` **number** Number of grid squares per tile
+
+    -   `opts.input` **string** An 'mbtiles://' uri to the input data
+
+    -   `opts.aggregations` **Object or string** If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see `#grid` for details).
+
+    -   `opts.postAggregations` **[string]** Path to a module mapping layer names to postAggregations objects.  See `#grid` for details.
+
+    -   `opts.jobs` **number** The number of jobs to try to run in parallel. Note that once the zoom level gets low enough, the degree of parallelization will be reduced.
+
+    -   `opts.progress` **boolean** Display a progress bar (uses stderr)
+
+    -   `opts.minzoom` **number** Build the aggregated pyramid to this zoom level
+
+-   `done` **function** called with (err) when done
+
+
+
+
 ## Built With
 
- - [Turf.js](http://turfjs.org),
-   [geojson-vt](https://github.org/mapbox/geojson-vt), and several other super
-   fly modules by [Mapbox](https://github.com/mapbox)
- - Also, several conversations with @morganherlocker (the author of many of the
-   aforementioned modules, including Turf.)
-
+-   [Turf.js](http://turfjs.org),
+    [geojson-vt](https://github.org/mapbox/geojson-vt), and several other super
+    fly modules by [Mapbox](https://github.com/mapbox)
+-   Also, several conversations with @morganherlocker (the author of many of the
+    aforementioned modules, including Turf.)
