@@ -23,7 +23,13 @@ process.on('message', function (options) {
       output._db.configure('busyTimeout', 30000)
       grid(output, input, options, function (err) {
         if (err) { throw err }
-        process.exit()
+        output.close(function (err) {
+          if (err) { throw err }
+          input.close(function (err) {
+            if (err) { throw err }
+            process.exit()
+          })
+        })
       })
     })
   })

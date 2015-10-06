@@ -9,6 +9,7 @@ var queue = require('queue-async')
 var aggregate = require('geojson-polygon-aggregate')
 var tiletree = require('./lib/tile-family')
 var GeoJSONWrapper = require('./lib/geojson-wrapper')
+var filterDegenerate = require('./lib/degenerate')
 
 module.exports = grid
 
@@ -146,6 +147,10 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
         var feat = vt.feature(j)
         features[j] = feat.toGeoJSON.apply(feat, tiletree.toXYZ(progeny[i]))
       }
+
+      // filter out features that are exactly on the tile boundary and not
+      // properly within the tile
+      features = features.filter(filterDegenerate(progeny[i]))
 
       var box = {
         type: 'Feature',

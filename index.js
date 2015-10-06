@@ -158,22 +158,23 @@ function vtGrid (opts, done) {
 
   var _cleanedUp = false
   function cleanup (error) {
+    if (error) { console.error(error) }
     if (_cleanedUp) { return }
     _cleanedUp = true
     output._db.run('PRAGMA journal_mode=DELETE', function (err) {
-      if (err) {
-        if (error) { console.error(error) }
-        return done(err)
-      }
+      if (err) { return done(err) }
       // if there's a minzoom set in the db, we need to update it, since we've
       // added lower-zoom tiles
       output._db.run('UPDATE metadata SET value=? WHERE name=?', opts.minzoom,
         'minzoom', function (err) {
-          if (err) {
-            if (error) { console.error(error) }
-            return done(err)
-          }
-          return done(error)
+          if (err) { return done(err) }
+          output.stopWriting(function (err) {
+            if (err) { return done(err) }
+            input.close(function (err) {
+              if (err) { return done(err) }
+              output.close(done)
+            })
+          })
         })
     })
   }
