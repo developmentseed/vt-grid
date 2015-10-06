@@ -76,6 +76,7 @@ function vtGrid (opts, done) {
     if (!bar && !opts['no-progress']) {
       var total = ancestors.map(function (l) { return l.length })
       total = total.reduce(function (s, level) { return (s || 0) + level })
+      total += tiles.length
       bar = new ProgressBar([
         '[:bar] :percent',
         'ETA :etas',
@@ -90,7 +91,7 @@ function vtGrid (opts, done) {
     var totalFeatures = 0
     function progress (jobs, tiles, features, lastTile) {
       totalFeatures += features
-      var totalTiles = bar.curr
+      var totalTiles = bar.curr + tiles
       var deltaT = (new Date() - bar.start) / 1000
       bar.tick(tiles, {
         jobs: jobs,
