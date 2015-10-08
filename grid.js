@@ -1,15 +1,12 @@
 var path = require('path')
 var zlib = require('zlib')
 var vtpbf = require('vt-pbf')
-var geojsonvt = require('geojson-vt')
 var VectorTile = require('vector-tile').VectorTile
 var Pbf = require('pbf')
-var tilebelt = require('tilebelt')
 var queue = require('queue-async')
-var aggregate = require('geojson-polygon-aggregate')
 var tiletree = require('./lib/tile-family')
-var GeoJSONWrapper = require('./lib/geojson-wrapper')
-var filterDegenerate = require('./lib/degenerate')
+var aggregateCells = require('./lib/aggregate-cells')
+var geojsonvt = require('geojson-vt')
 
 module.exports = grid
 
@@ -36,6 +33,8 @@ function grid (dest, source, opts, callback) {
   if (typeof opts.postAggregations === 'string') {
     mod = path.resolve(process.cwd(), opts.postAggregations)
     opts.postAggregations = require(mod).postAggregations
+  } else if (!opts.postAggregations) {
+    opts.postAggregations = {}
   }
 
   opts.minzoom = Math.max(0, opts.minzoom)
@@ -54,14 +53,14 @@ function grid (dest, source, opts, callback) {
   }
 
   // console.log(pyramid.map(function (l) { return l[0][0] + ':' + l.length }))
-  aggregateTiles(dest, source, opts, pyramid, callback)
+  buildPyramid(dest, source, opts, pyramid, callback)
 }
 
 /**
  * @param {Array} levels An array of pyramid levels, where each pyramid level is itself an array of coordinates of tiles that we want to build.
  * @private
  */
-function aggregateTiles (dest, src, options, levels, callback) {
+function buildPyramid (dest, src, options, levels, callback) {
   if (levels.length === 0) { return callback() }
   dest.startWriting(next)
 
@@ -99,14 +98,13 @@ function aggregateTiles (dest, src, options, levels, callback) {
       // we've built the lowest layer of the pyramid we were given. now recurse
       // with the rest.  Use `dest` as the source too, since after the first
       // level is built, we want to read from dest, not source
-      aggregateTiles(dest, dest, options, levels.slice(1), callback)
+      buildPyramid(dest, dest, options, levels.slice(1), callback)
     })
   }
 }
 
 function writeAggregatedTile (db, options, tile, tileFeatures, next) {
   var z = tile[0]
-  var gz = z + options._depth
 
   // for each tile, we get a map of layer name -> geojson features
   // so, first, combine these into a single such map
@@ -125,63 +123,14 @@ function writeAggregatedTile (db, options, tile, tileFeatures, next) {
   var aggregatedLayers = {}
   var layerCount = 0
   for (var layer in featuresByLayer) {
-    var tileIndex = geojsonvt({
-      type: 'FeatureCollection',
-      features: featuresByLayer[layer]
-    }, {
-      maxZoom: gz,
-      tolerance: 0,
-      buffer: 0,
-      indexMaxZoom: gz
-    })
-
-    var progeny = tiletree.getProgeny(tile, gz)
-    var boxes = []
-    for (var i = 0; i < progeny.length; i++) {
-      var t = tileIndex.getTile.apply(tileIndex, progeny[i])
-      if (!t) { continue }
-
-      var vt = new GeoJSONWrapper(t.features)
-      var features = new Array(vt.length)
-      for (var j = 0; j < vt.length; j++) {
-        var feat = vt.feature(j)
-        features[j] = feat.toGeoJSON.apply(feat, tiletree.toXYZ(progeny[i]))
-      }
-
-      // filter out features that are exactly on the tile boundary and not
-      // properly within the tile
-      features = features.filter(filterDegenerate(progeny[i]))
-
-      var box = {
-        type: 'Feature',
-        properties: aggregate(features, options.aggregations[layer]),
-        geometry: tilebelt.tileToGeoJSON(tiletree.toXYZ(progeny[i]))
-      }
-
-      if (options.postAggregations && options.postAggregations[layer]) {
-        for (var field in options.postAggregations[layer]) {
-          var fn = options.postAggregations[layer][field]
-          box.properties[field] = fn(box)
-        }
-      }
-
-      box.properties._quadKey = tilebelt.tileToQuadkey(tiletree.toXYZ(progeny[i]))
-      boxes.push(box)
-    }
-
-    if (boxes.length) {
-      aggregatedLayers[layer] = geojsonvt({
-        type: 'FeatureCollection',
-        features: boxes
-      }, {
-        maxZoom: z,
-        tolerance: 0,
-        buffer: 0,
-        indexMaxZoom: z
-      }).getTile(tile[0], tile[1], tile[2])
-
-      layerCount++
-    }
+    var gridFeatures = aggregateCells(
+      featuresByLayer[layer],
+      tile,
+      z + options._depth,
+      options.aggregations[layer],
+      options.postAggregations[layer])
+    aggregatedLayers[layer] = tileFromFeatureCollection(gridFeatures, tile)
+    layerCount++
   }
 
   // serialize, compress, and save the tile
@@ -226,3 +175,11 @@ function readTileFeatures (db, tile, layers, callback) {
   })
 }
 
+function tileFromFeatureCollection (fc, tile) {
+  return geojsonvt(fc, {
+    maxZoom: tile[0],
+    tolerance: 0,
+    buffer: 0,
+    indexMaxZoom: tile[0]
+  }).getTile(tile[0], tile[1], tile[2])
+}

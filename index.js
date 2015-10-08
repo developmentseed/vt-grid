@@ -63,25 +63,25 @@ function vtGrid (opts, done) {
   // reached high enough in the pyramid, drop down the parallelization (see
   // notes below)
   function run (tiles) {
-    // ancestors is an array of arrays of parent tiles, starting with
-    // ancestors[0] = parents of `tiles`.
-    var ancestors = tf.getAncestors(tiles, opts.minzoom)
+    // levels is an array of arrays of parent tiles, starting with
+    // levels[0] = parents of `tiles`.
+    var levels = tf.getAncestors(tiles, opts.minzoom)
     var basezoom = tiles[0][0]
 
     // How far up can we go while keeping a clean separation of minzoom
     // tiles among the different parallel jobs we're running?
     // (they're aggregating, so we don't want different jobs to overlap as
     // they go up the pyramid)
-    var serial = -1
-    while (serial < ancestors.length - 1 &&
-      ancestors[serial + 1].length >= opts.jobs) {
-      serial++
+    var depth = -1
+    while (depth < levels.length - 1 &&
+      levels[depth + 1].length >= opts.jobs) {
+      depth++
     }
 
     // progress bar
     if (!bar && opts.progress) {
-      var total = ancestors.map(function (l) { return l.length })
-      total = total.reduce(function (s, level) { return (s || 0) + level })
+      var total = levels.map(function (l) { return l.length })
+      total = total.reduce(function (s, level) { return s + level }, 0)
       total += tiles.length
       bar = new ProgressBar([
         '[:bar] :percent',
@@ -112,7 +112,7 @@ function vtGrid (opts, done) {
       tiles: tiles,
       aggregations: opts.aggregations,
       postAggregations: opts.postAggregations,
-      minzoom: basezoom - 1 - serial,
+      minzoom: basezoom - 1 - depth,
       basezoom: opts.basezoom,
       gridsize: opts.gridsize,
       input: opts.input,
@@ -136,7 +136,7 @@ function vtGrid (opts, done) {
           }
 
           opts.jobs = Math.max(Math.floor(opts.jobs / 4), 1)
-          run(ancestors[serial])
+          run(levels[depth])
         }
       })
 
@@ -152,7 +152,7 @@ function vtGrid (opts, done) {
       })
 
       // start the work by sending options
-      child.send(job(options, ancestors[serial], i, opts.jobs))
+      child.send(job(options, levels[depth], i, opts.jobs))
     }
   }
 
@@ -186,7 +186,13 @@ function vtGrid (opts, done) {
 // descendants of the batch.  that way, we can go up the pyramid in parallel
 // TODO: explain this clearly
 function job (baseOptions, batches, index, jobs) {
-  var batch = batches.filter(function (b, i) { return i % jobs === index })
-  var tiles = baseOptions.tiles.filter(tf.hasProgeny(batch))
+  function batchFilter (b, i) { return i % jobs === index }
+  var tiles
+  if (batches) {
+    var batch = batches.filter(batchFilter)
+    tiles = baseOptions.tiles.filter(tf.hasProgeny(batch))
+  } else {
+    tiles = baseOptions.tiles.filter(batchFilter)
+  }
   return xtend(baseOptions, { tiles: tiles })
 }
