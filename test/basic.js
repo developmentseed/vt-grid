@@ -3,6 +3,7 @@ var path = require('path')
 var test = require('tap').test
 var tmp = require('tmp')
 var vtgeojson = require('vt-geojson')
+var MBTiles = require('mbtiles')
 var vtgrid = require('../')
 
 test('basic aggregations', function (t) {
@@ -41,7 +42,24 @@ test('basic aggregations', function (t) {
           t.ok(results[key] === 0 || !results[key])
         }
       }
-      t.end()
+
+      getInfo(output, function (err, info) {
+        t.error(err)
+        var expectedJSON = fs.readFileSync(__dirname + '/fixture/dc.tilejson.json')
+        expectedJSON = JSON.parse(expectedJSON)
+        delete info.id
+        delete info.basename
+        delete info.filesize
+        t.same(info, expectedJSON, 'tilejson metadata')
+        t.end()
+      })
     })
   })
 })
+
+function getInfo (file, callback) {
+  var mbtiles = new MBTiles('mbtiles://' + file, function (err) {
+    if (err) return callback(err)
+    mbtiles.getInfo(callback)
+  })
+}

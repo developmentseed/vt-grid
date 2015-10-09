@@ -6,6 +6,9 @@ var xtend = require('xtend')
 var ProgressBar = require('progress')
 var list = require('./lib/list')
 var tf = require('./lib/tile-family')
+var waterfall = require('run-waterfall')
+var parallel = require('run-parallel')
+var series = require('run-series')
 
 module.exports = vtGrid
 
@@ -35,26 +38,29 @@ function vtGrid (opts, done) {
   }
 
   var input
-  var output = new MBTiles(opts.output, function (err) {
-    if (err) { return done(err) }
-    input = new MBTiles(opts.input, function (err) {
-      if (err) { return done(err) }
-      // WAL mode allows writers not to block readers
-      // https://www.sqlite.org/wal.html
-      output._db.run('PRAGMA journal_mode=WAL', function (err) {
-        if (err) { return done(err) }
-        input.getInfo(function (err, info) {
-          if (err) { return cleanup(err) }
-          if (typeof opts.basezoom !== 'number') {
-            opts.basezoom = info.minzoom
-          }
-          list(input, opts.basezoom, function (err, tiles) {
-            if (err) { return cleanup(err) }
-            run(tiles)
-          })
-        })
-      })
-    })
+  var output
+
+  waterfall([
+    parallel.bind(parallel, [
+      getMbtiles.bind(null, opts.input),
+      getMbtiles.bind(null, opts.output)
+    ]),
+    function (results, callback) {
+      input = results[0]
+      output = results[1]
+      input.getInfo(callback)
+    },
+    function (info, callback) {
+      if (typeof opts.basezoom !== 'number') {
+        opts.basezoom = info.minzoom
+      }
+      callback()
+    },
+    function (callback) { setJournalMode(output._db, 'WAL', callback) },
+    function (callback) { list(input, opts.basezoom, callback) }
+  ], function (err, tiles) {
+    if (err) { return cleanup(err) }
+    run(tiles)
   })
 
   var bar
@@ -161,23 +167,48 @@ function vtGrid (opts, done) {
     if (error) { console.error(error) }
     if (_cleanedUp) { return }
     _cleanedUp = true
-    output._db.run('PRAGMA journal_mode=DELETE', function (err) {
-      if (err) { return done(err) }
-      // if there's a minzoom set in the db, we need to update it, since we've
-      // added lower-zoom tiles
-      output._db.run('UPDATE metadata SET value=? WHERE name=?', opts.minzoom,
-        'minzoom', function (err) {
-          if (err) { return done(err) }
-          output.stopWriting(function (err) {
-            if (err) { return done(err) }
-            input.close(function (err) {
-              if (err) { return done(err) }
-              output.close(done)
-            })
-          })
-        })
-    })
+    series([
+      setJournalMode.bind(null, output._db, 'DELETE'),
+      output.startWriting.bind(output),
+      updateLayerMetadata,
+      updateZooms,
+      output.stopWriting.bind(output),
+      output.close.bind(output),
+      input.close.bind(input)
+    ], done)
   }
+
+  function setJournalMode (db, mode, callback) {
+    db.run('PRAGMA journal_mode=' + mode, callback)
+  }
+
+  function updateZooms (callback) {
+    output._db.run('UPDATE metadata SET value=? WHERE name=?', opts.minzoom,
+      'minzoom', callback)
+  }
+
+  function updateLayerMetadata (callback) {
+    var vectorlayers = []
+    for (var layerName in opts.aggregations) {
+      var layer = {
+        id: layerName,
+        description: '',
+        fields: {}
+      }
+      for (var field in opts.aggregations[layerName]) {
+        layer.fields[field] = opts.aggregations[layerName][field] + ''
+      }
+      vectorlayers.push(layer)
+    }
+    output.putInfo({
+      vector_layers: vectorlayers
+    }, callback)
+  }
+}
+
+function getMbtiles (uri, callback) {
+  /* eslint-disable no-new */
+  new MBTiles(uri, callback)
 }
 
 // set up the options object for a single worker
