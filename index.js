@@ -1,7 +1,7 @@
 
 var os = require('os')
 var fork = require('child_process').fork
-var MBTiles = require('mbtiles')
+var tilelive = require('tilelive')
 var xtend = require('xtend')
 var ProgressBar = require('progress')
 var list = require('./lib/list')
@@ -16,8 +16,8 @@ module.exports = vtGrid
  * Build a pyramid of aggregated square-grid features.
  *
  * @param {Object} opts
- * @param {string} opts.input An 'mbtiles://' uri to the input data
- * @param {string} opts.putput An 'mbtiles://' uri to which to output aggregated data
+ * @param {string} opts.input A tilelive uri to the input data
+ * @param {string} opts.output A tilelive uri to which to output aggregated data
  * @param {number} opts.basezoom The zoom level at which to find the initial data
  * @param {number} opts.gridsize Number of grid squares per tile
  * @param {number} opts.minzoom Build the aggregated pyramid to this zoom level
@@ -40,10 +40,12 @@ function vtGrid (opts, done) {
   var input
   var output
 
+  tilelive.auto(opts.input)
+  tilelive.auto(opts.output)
   waterfall([
     parallel.bind(parallel, [
-      getMbtiles.bind(null, opts.input),
-      getMbtiles.bind(null, opts.output)
+      tilelive.load.bind(null, opts.input),
+      tilelive.load.bind(null, opts.output)
     ]),
     function (results, callback) {
       input = results[0]
@@ -167,24 +169,22 @@ function vtGrid (opts, done) {
     if (error) { console.error(error) }
     if (_cleanedUp) { return }
     _cleanedUp = true
-    series([
-      setJournalMode.bind(null, output._db, 'DELETE'),
-      output.startWriting.bind(output),
-      updateLayerMetadata,
-      updateZooms,
-      output.stopWriting.bind(output),
-      output.close.bind(output),
-      input.close.bind(input)
-    ], done)
+    if (output) {
+      series([
+        setJournalMode.bind(null, output._db, 'DELETE'),
+        output.startWriting.bind(output),
+        updateLayerMetadata,
+        output.stopWriting.bind(output),
+        output.close.bind(output),
+        input.close.bind(input)
+      ], done)
+    }
   }
 
   function setJournalMode (db, mode, callback) {
-    db.run('PRAGMA journal_mode=' + mode, callback)
-  }
-
-  function updateZooms (callback) {
-    output._db.run('UPDATE metadata SET value=? WHERE name=?', opts.minzoom,
-      'minzoom', callback)
+    if (db) {
+      db.run('PRAGMA journal_mode=' + mode, callback)
+    }
   }
 
   function updateLayerMetadata (callback) {
@@ -201,14 +201,10 @@ function vtGrid (opts, done) {
       vectorlayers.push(layer)
     }
     output.putInfo({
-      vector_layers: vectorlayers
+      vector_layers: vectorlayers,
+      minzoom: opts.minzoom
     }, callback)
   }
-}
-
-function getMbtiles (uri, callback) {
-  /* eslint-disable no-new */
-  new MBTiles(uri, callback)
 }
 
 // set up the options object for a single worker

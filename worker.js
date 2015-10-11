@@ -1,6 +1,8 @@
 var grid = require('./grid')
-var MBTiles = require('mbtiles')
+var tilelive = require('tilelive')
 var aggregate = require('geojson-polygon-aggregate')
+var parallel = require('run-parallel')
+
 process.on('message', function (options) {
   options.progress = function workerProgress () {
     process.send({ progress: Array.prototype.slice.call(arguments) })
@@ -15,21 +17,29 @@ process.on('message', function (options) {
     }
   }
 
-  var input = new MBTiles(options.input, function (err) {
+  tilelive.auto(options.input)
+  tilelive.auto(options.output)
+  parallel([
+    tilelive.load.bind(null, options.input),
+    tilelive.load.bind(null, options.output)
+  ], function (err, results) {
     if (err) { throw err }
-    var output = new MBTiles(options.output, function (err) {
-      if (err) { throw err }
+    var input = results[0]
+    var output = results[1]
+
+    if (output._db) {
       // set a busy timeout to avoid SQLITE_BUSY
       output._db.configure('busyTimeout', 30000)
-      grid(output, input, options, function (err) {
+    }
+
+    grid(output, input, options, function (err) {
+      if (err) { throw err }
+      parallel([
+        output.close.bind(output),
+        input.close.bind(input)
+      ], function (err) {
         if (err) { throw err }
-        output.close(function (err) {
-          if (err) { throw err }
-          input.close(function (err) {
-            if (err) { throw err }
-            process.exit()
-          })
-        })
+        process.exit()
       })
     })
   })

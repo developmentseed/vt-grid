@@ -26,8 +26,8 @@ var argv = require('yargs')
   .help('h')
   .argv
 
-argv.input = 'mbtiles://' + path.resolve(process.cwd(), argv._[0])
-argv.output = 'mbtiles://' + path.resolve(process.cwd(), argv._[1])
+argv.input = normalize(argv._[0])
+argv.output = normalize(argv._[1])
 if (argv.aggregations.length === 1 && /\.js/.test(argv.aggregations[0])) {
   argv.aggregations = argv.aggregations[0]
 } else {
@@ -49,3 +49,8 @@ if (argv.aggregations.length === 1 && /\.js/.test(argv.aggregations[0])) {
 }
 
 vtGrid(argv)
+
+function normalize (p) {
+  if (/:\/\//.test(p)) { return p }
+  return 'mbtiles://' + path.resolve(p)
+}
