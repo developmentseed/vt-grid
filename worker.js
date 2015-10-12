@@ -1,12 +1,18 @@
-var grid = require('./grid')
+var grid = require('./lib/grid')
 var tilelive = require('tilelive')
 var aggregate = require('geojson-polygon-aggregate')
+var throttle = require('lodash.throttle')
 var parallel = require('run-parallel')
 
 process.on('message', function (options) {
-  options.progress = function workerProgress () {
-    process.send({ progress: Array.prototype.slice.call(arguments) })
-  }
+  options.progress = throttle(function workerProgress () {
+    try {
+      process.send({ progress: Array.prototype.slice.call(arguments) })
+    } catch (e) {
+      process.exit(1)
+    }
+  }, 100)
+
   // aggregation functions were passed in as names.  look up the actual functions.
   if (typeof options.aggregations !== 'string') {
     for (var layer in options.aggregations) {
@@ -32,14 +38,22 @@ process.on('message', function (options) {
       output._db.configure('busyTimeout', 30000)
     }
 
-    grid(output, input, options, function (err) {
+    grid(output, input, options, function (err, finalProgress, nextLevel) {
       if (err) { throw err }
       parallel([
         output.close.bind(output),
         input.close.bind(input)
       ], function (err) {
         if (err) { throw err }
-        process.exit()
+        try {
+          process.send({
+            progress: finalProgress,
+            nextLevel: nextLevel
+          })
+          process.exit()
+        } catch (e) {
+          process.exit(1)
+        }
       })
     })
   })
