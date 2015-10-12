@@ -7,6 +7,7 @@ var waterfall = require('run-waterfall')
 var parallel = require('run-parallel')
 var series = require('run-series')
 var uniq = require('uniq')
+var range = require('lodash.range')
 var progress = require('./lib/progress')
 var list = require('./lib/list')
 var tf = require('./lib/tile-family')
@@ -25,7 +26,6 @@ module.exports = vtGrid
  * @param {Object|string} opts.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see {@link #grid} for details).
  * @param {string} [opts.postAggregations] - Path to a module mapping layer names to postAggregations objects.  See {@link #grid} for details.
  * @param {number} opts.jobs The number of jobs to try to run in parallel. Note that once the zoom level gets low enough, the degree of parallelization will be reduced.
- * @param {number} opts.batches The number of tiles to process in each batch.
  * @param {boolean} opts.progress Display a progress bar (uses stderr)
  * @param {function} done called with (err) when done
  */
@@ -75,10 +75,6 @@ function vtGrid (opts, done) {
   ], function (err, tiles) {
     if (err) { return cleanup(err) }
 
-    if (opts.jobs > 1 && !opts.batches) {
-      opts.batches = tiles.length / opts.jobs
-    }
-
     // progress bar
     if (opts.progress) {
       var total = [tiles].concat(tf.getAncestors(tiles, opts.minzoom))
@@ -87,7 +83,7 @@ function vtGrid (opts, done) {
       updateProgress = progress(total)
     }
 
-    batches = makeBatches(opts, tiles, opts.batches)
+    batches = makeBatches(opts, tiles, opts.jobs)
     run()
   })
 
@@ -99,7 +95,7 @@ function vtGrid (opts, done) {
     if (available <= 0) { return }
     if (!batches.length && !running) {
       if (nextLevelTiles.length) {
-        batches = makeBatches(opts, nextLevelTiles, opts.batches)
+        batches = makeBatches(opts, nextLevelTiles, opts.jobs)
         nextLevelTiles = []
       } else {
         updateProgress.finish()
@@ -124,6 +120,7 @@ function vtGrid (opts, done) {
     if (error) { console.error(error) }
     if (_cleanedUp) { return }
     _cleanedUp = true
+    opts.jobs = 0
     if (output) {
       series([
         setJournalMode.bind(null, output._db, 'DELETE'),
@@ -166,26 +163,45 @@ function start (opts, jobs, onProgress, onExit) {
 }
 
 /**
+ * Make batches from the given options and list of tiles
  * @private
  * @param opts
  * @param tiles
  * @param numBatches
  */
 function makeBatches (opts, tiles, numBatches) {
+  function batchFilter (job) { return function (_, i) { return i % numBatches === job } }
+  function nonempty (a) { return a.length }
   tiles = uniq(tiles, function (t1, t2) {
     return t1.join('/') === t2.join('/') ? 0 : 1
   })
-  var size = Math.ceil(tiles.length / numBatches)
-  var batched = []
-  for (var i = 0; i < tiles.length; i += size) {
-    var batchTiles = tiles.slice(i, i + size)
-    var options = xtend(opts, {
-      tiles: batchTiles,
-      minzoom: tiles[0][0]
-    })
-    batched.push(options)
-  }
-  return batched
+
+  var pyramidBatches = [tiles].concat(tf.getAncestors(tiles, opts.minzoom))
+  .map(function (level) {
+    return range(numBatches)
+      .map(function (b) { return level.filter(batchFilter(b)) })
+      .map(function (b) { return tiles.filter(tf.hasProgeny(b)) })
+      .filter(nonempty)
+      .map(function (b) {
+        return {
+          minzoom: level[0][0],
+          tiles: b
+        }
+      })
+  })
+
+  // the actual number of batches should be whatever number the base tiles
+  // can support
+  numBatches = pyramidBatches[0].length
+
+  // filter out pyramid levels that can't support that many batches, and then
+  // choose the highest one to make the actual array of batch options
+  pyramidBatches = pyramidBatches
+    .filter(function (f, i) { return i === 0 || f.length >= numBatches })
+
+  return pyramidBatches[pyramidBatches.length - 1].map(function (batch) {
+    return xtend(opts, batch)
+  })
 }
 
 function updateLayerMetadata (dest, opts, callback) {
