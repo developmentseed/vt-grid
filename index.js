@@ -226,6 +226,8 @@ function updateLayerMetadata (dest, opts, callback) {
 function setJournalMode (db, mode, callback) {
   if (db) {
     db.run('PRAGMA journal_mode=' + mode, callback)
+  } else {
+    callback()
   }
 }
 
