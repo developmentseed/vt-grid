@@ -41,8 +41,14 @@ process.on('message', function (options) {
     grid(output, input, options, function (err, finalProgress, nextLevel) {
       if (err) { throw err }
       parallel([
-        output.close.bind(output),
-        input.close.bind(input)
+        function (cb) {
+          if (typeof output.close === 'function') { return output.close(cb) }
+          cb()
+        },
+        function (cb) {
+          if (typeof input.close === 'function') { return input.close(cb) }
+          cb()
+        }
       ], function (err) {
         if (err) { throw err }
         try {
