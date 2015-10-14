@@ -5,13 +5,24 @@ var throttle = require('lodash.throttle')
 var parallel = require('run-parallel')
 
 process.on('message', function (options) {
-  options.progress = throttle(function workerProgress () {
+  var featureCount = 0
+  var tileCount = 0
+
+  var sendProgress = throttle(function workerProgress () {
     try {
+      featureCount = 0
+      tileCount = 0
       process.send({ progress: Array.prototype.slice.call(arguments) })
     } catch (e) {
       process.exit(1)
     }
   }, 100)
+
+  options.progress = function (tiles, features, lasttile) {
+    tileCount += tiles
+    featureCount += features
+    sendProgress(tileCount, featureCount, lasttile)
+  }
 
   // aggregation functions were passed in as names.  look up the actual functions.
   if (typeof options.aggregations !== 'string') {
