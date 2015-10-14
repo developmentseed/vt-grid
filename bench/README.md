@@ -7,9 +7,6 @@ Context: https://github.com/hotosm/oam-catalog-grid
 
 Check it:
 ```sh
-npm install -g node-debug
-node-debug footprints.js
+node footprints.js > result.txt
 ```
-
-Start the CPU profiler, wait a while, stop it, and poke around.
 

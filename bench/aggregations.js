@@ -42,12 +42,13 @@ filters.getAllCombinations().forEach(function (combo) {
     }
 
     aggs[combo.key].finish = union.finish
-    postAggs[combo.key + '_count'] = function (feature) {
-      var val = feature.properties[combo.key]
-      try {
-        return val ? JSON.parse(val).length : 0
-      } catch (e) { return 0 }
-    }
+  }
+
+  postAggs[combo.key + '_count'] = function (feature) {
+    var val = feature.properties[combo.key]
+    try {
+      return val ? JSON.parse(val).length : 0
+    } catch (e) { return 0 }
   }
 })
 
