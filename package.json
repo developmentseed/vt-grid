@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "fs-extra": "^0.24.0",
+    "oam-browser-filters": "^2.0.0",
     "tap": "^2.0.0",
     "tmp": "0.0.28",
     "vt-geojson": "^2.0.0"

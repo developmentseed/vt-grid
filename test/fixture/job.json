@@ -1,7 +1,6 @@
 {
   "minzoom":1,
   "gridsize":64,
-  "jobs":1,
   "maxzoom":13,
   "basezoom":13,
   "tiles":[
