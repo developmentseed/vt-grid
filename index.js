@@ -256,7 +256,6 @@ function updateLayerMetadata (dest, opts, callback) {
     }
     vectorlayers.push(layer)
   }
-  console.log(vectorlayers)
   dest.putInfo({
     vector_layers: vectorlayers,
     minzoom: opts.minzoom
