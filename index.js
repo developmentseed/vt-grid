@@ -1,5 +1,6 @@
 
 var os = require('os')
+var path = require('path')
 var fork = require('child_process').fork
 var tilelive = require('tilelive')
 var xtend = require('xtend')
@@ -152,12 +153,12 @@ function vtGrid (opts, done) {
         output.stopWriting.bind(output),
         function (callback) {
           debug('closing output')
-          if (output.close) { return output.close(callback) }
+          // if (output.close) { return output.close(callback) }
           callback()
         },
         function (callback) {
-          debug('closing output')
-          if (input.close) { return input.close(callback) }
+          debug('closing input')
+          // if (input.close) { return input.close(callback) }
           callback()
         }
       ], function (err) {
@@ -240,17 +241,22 @@ function makeBatches (opts, levels, numBatches) {
 
 function updateLayerMetadata (dest, opts, callback) {
   var vectorlayers = []
-  for (var layerName in opts.aggregations) {
+  var aggregations = opts.aggregations
+  if (typeof aggregations === 'string') {
+    aggregations = require(path.resolve(aggregations)).aggregations
+  }
+  for (var layerName in aggregations) {
     var layer = {
       id: layerName,
       description: '',
       fields: {}
     }
-    for (var field in opts.aggregations[layerName]) {
-      layer.fields[field] = opts.aggregations[layerName][field] + ''
+    for (var field in aggregations[layerName]) {
+      layer.fields[field] = aggregations[layerName][field] + ''
     }
     vectorlayers.push(layer)
   }
+  console.log(vectorlayers)
   dest.putInfo({
     vector_layers: vectorlayers,
     minzoom: opts.minzoom
