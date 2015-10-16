@@ -20,7 +20,7 @@
   "dependencies": {
     "debug": "^2.2.0",
     "geojson-polygon-aggregate": "^1.4.1",
-    "geojson-vt": "^2.1.5",
+    "geojson-vt": "^2.1.7",
     "lodash.range": "^3.0.1",
     "lodash.throttle": "^3.0.4",
     "mbtiles": "^0.8.0",
