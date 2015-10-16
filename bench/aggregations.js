@@ -1,9 +1,22 @@
+var uniq = require('uniq')
 var filters = require('oam-browser-filters')
-var aggregate = require('geojson-polygon-aggregate')
 
 var aggs = {}
 var postAggs = {}
-var union = aggregate.union('FID')
+
+function union (memo, feature) {
+  memo = (memo || [])
+  if (!('FID' in feature.properties)) { return memo }
+  var value = feature.properties['FID']
+  memo.push(value)
+  return memo
+}
+
+union.finish = function (memo) {
+  return memo ? uniq(memo).join(',') : ''
+}
+
+var comma = ','.charAt(0)
 
 filters.getAllCombinations().forEach(function (combo) {
   var params = combo.searchParameters
@@ -17,22 +30,18 @@ filters.getAllCombinations().forEach(function (combo) {
     aggs[combo.key] = function (memo, feature) {
       var props = feature.properties
 
-      var passesFilter = Object.keys(params)
-      .every(function (criterion) {
-        switch (criterion) {
-          case 'gsd_from':
-            return props.gsd >= params[criterion]
-
-          case 'gsd_to':
-            return props.gsd <= params[criterion]
-
-          case 'acquisition_from':
-            return new Date(props.acquisition_end) > params[criterion]
-
-          case 'has_tiled':
-            return props.tms
+      var passesFilter = true
+      for (var criterion in params) {
+        if (criterion === 'gsd_from') {
+          passesFilter = passesFilter && props.gsd >= params[criterion]
+        } else if (criterion === 'gsd_to') {
+          passesFilter = passesFilter && props.gsd <= params[criterion]
+        } else if (criterion === 'acquisition_from') {
+          passesFilter = passesFilter && new Date(props.acquisition_end) > params[criterion]
+        } else if (criterion === 'has_tiled') {
+          passesFilter = passesFilter && props.tms
         }
-      })
+      }
 
       if (passesFilter) {
         return union(memo, feature)
@@ -46,9 +55,14 @@ filters.getAllCombinations().forEach(function (combo) {
 
   postAggs[combo.key + '_count'] = function (feature) {
     var val = feature.properties[combo.key]
-    try {
-      return val ? JSON.parse(val).length : 0
-    } catch (e) { return 0 }
+    if (!val) { return 0 }
+    var items = 1
+    for (var i = val.length - 1; i >= 0; i--) {
+      if (val.charAt(i) === comma) {
+        items++
+      }
+    }
+    return items
   }
 })
 
