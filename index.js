@@ -16,7 +16,7 @@ module.exports = vtGrid
  *
  * @param {string} output Path to output aggregated mbtiles data
  * @param {string} input Path to the input mbtiles data
- * @param {Object} opts
+ * @param {Object|Array} opts Options OR an array of options objects to allow different aggregations/settings for different zoom levels
  * @param {number} opts.basezoom The zoom level at which to find the initial data
  * @param {Array} [opts.inputTiles] An array of [z, x, y] tile coordinates to start with
  * @param {number} opts.gridsize Number of grid squares per tile
