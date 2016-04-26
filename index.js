@@ -55,7 +55,9 @@ function vtGrid (output, input, opts, done) {
     getInfo(input, function (err, info) {
       if (err) { return done(err) }
       var opts = optionStack.shift()
-      if (opts.basezoom === Infinity) { opts.basezoom = info.minzoom }
+      if (isNaN(opts.basezoom) || opts.basezoom === Infinity) {
+        opts.basezoom = info.minzoom
+      }
 
       // Hack: just use the first layer name from the source data
       // Upstream issue in tippecanoe will allow removing this hack
