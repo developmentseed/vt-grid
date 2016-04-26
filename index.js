@@ -1,272 +1,154 @@
 
+var fs = require('fs')
 var os = require('os')
+var spawn = require('child_process').spawn
 var path = require('path')
-var fork = require('child_process').fork
-var tilelive = require('tilelive')
-var xtend = require('xtend')
-var waterfall = require('run-waterfall')
-var parallel = require('run-parallel')
-var series = require('run-series')
-var uniq = require('uniq')
-var range = require('lodash.range')
-var debug = require('debug')('vt-grid:main')
-var progress = require('./lib/progress')
-var list = require('./lib/list')
-var tf = require('./lib/tile-family')
+var tmp = require('tmp')
+var MBTiles = require('mbtiles')
+var tileReduce = require('tile-reduce')
+
+tmp.setGracefulCleanup()
 
 module.exports = vtGrid
 
 /**
  * Build a pyramid of aggregated square-grid features.
  *
+ * @param {string} output Path to output aggregated mbtiles data
+ * @param {string} input Path to the input mbtiles data
  * @param {Object} opts
- * @param {string} opts.input A tilelive uri to the input data
- * @param {Array} [opts.inputTiles] An array of [z, x, y] tile coordinates to start with
- * @param {string} opts.output A tilelive uri to which to output aggregated data
  * @param {number} opts.basezoom The zoom level at which to find the initial data
+ * @param {Array} [opts.inputTiles] An array of [z, x, y] tile coordinates to start with
  * @param {number} opts.gridsize Number of grid squares per tile
- * @param {number} opts.maxzoom Start building the aggregated pyramid at this zoom level.  Defaults to opts.basezoom.
- * @param {number} opts.minzoom Build the aggregated pyramid to this zoom level
  * @param {Object|string} opts.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see {@link #grid} for details).
  * @param {string} [opts.postAggregations] - Path to a module mapping layer names to postAggregations objects.  See {@link #grid} for details.
- * @param {number} opts.jobs The number of jobs to try to run in parallel. Note that once the zoom level gets low enough, the degree of parallelization will be reduced.
- * @param {boolean} opts.progress Display a progress bar (uses stderr)
+ * @param {number} opts.jobs The number of jobs to run in parallel.
  * @param {function} done called with (err) when done
  */
-function vtGrid (opts, done) {
-  if (!done) {
-    done = function (err) { if (err) { throw err } }
-  }
+function vtGrid (output, input, opts, done) {
+  if (!done) { done = function (err) { if (err) { throw err } } }
 
-  if (!opts.jobs) { opts.jobs = os.cpus().length }
-  if (typeof opts.progress === 'undefined') {
-    opts.progress = true
-  }
+  tmp.dir({unsafeCleanup: true}, function (err, tmpdir) {
+    if (err) { return done(err) }
 
-  // input & output tilelive sources
-  var input
-  var output
-  // progress bar update function
-  var updateProgress
-  // current and next task queues (we have two because we want to build one
-  // zoom level at a time, and we use the output of, e.g., z10 to determine
-  // the list of tiles to build at z9, etc.)
-  var batches = []
-  var nextLevelTiles = []
-  // map of worker pid -> task options
-  var jobs = {}
+    var stats = { tiles: 0, features: {} }
 
-  debug('init', opts)
+    // allow an array of options, each defining different parts of the pyramid,
+    // to allow different aggregations at different parts (often needed for
+    // setting up the first aggregation layer)
+    var optionStack = Array.isArray(opts) ? opts : [opts]
+    optionStack = optionStack.map(function (o) {
+      return Object.assign({
+        jobs: os.cpus().length,
+        basezoom: Infinity,
+        _stats: stats
+      }, o)
+    })
+    .sort(function (a, b) { return b.basezoom - a.basezoom })
 
-  tilelive.auto(opts.input)
-  tilelive.auto(opts.output)
-  waterfall([
-    parallel.bind(parallel, [
-      tilelive.load.bind(null, opts.input),
-      tilelive.load.bind(null, opts.output)
-    ]),
-    function (results, callback) {
-      debug('loaded input and output')
-      input = results[0]
-      output = results[1]
-      input.getInfo(callback)
-    },
-    function (info, callback) {
-      debug('input source metadata', info)
-      if (typeof opts.basezoom !== 'number') {
-        opts.basezoom = info.minzoom
+    optionStack.forEach(function (o, i) {
+      if (i > 0 && o.basezoom !== opts[i - 1].minzoom) {
+        throw new Error('Basezoom of each option set must match minzoom of previous set.')
       }
-      callback()
-    },
-    function (callback) { setJournalMode(output._db, 'WAL', callback) },
-    function (callback) {
-      if (opts.inputTiles && opts.inputTiles.length) {
-        opts.maxzoom = opts.inputTiles[0][0]
-        return callback(null, opts.inputTiles)
-      }
+    })
 
-      list(input, opts.basezoom, callback)
-    }
-  ], function (err, tiles) {
-    if (err) { return cleanup(err) }
+    getInfo(input, function (err, info) {
+      if (err) { return done(err) }
+      var opts = optionStack.shift()
+      if (opts.basezoom === Infinity) { opts.basezoom = info.minzoom }
 
-    debug('starting level of tiles:', tiles.length)
+      // Hack: just use the first layer name from the source data
+      // Upstream issue in tippecanoe will allow removing this hack
+      // https://github.com/mapbox/tippecanoe/issues/188
+      if (!opts.layer) { opts.layer = info.vector_layers[0].id }
+      optionStack.forEach(function (o) { o.layer = o.layer || opts.layer })
 
-    // progress bar
-    var ancestors = [tiles].concat(tf.getAncestors(tiles, opts.minzoom))
+      var zoom = opts.basezoom - 1
+      var zoomLevelFiles = [input]
+      buildZoomLevel(tmpdir, input, zoom, opts, next)
 
-    if (opts.progress) {
-      var total = ancestors
-        .map(function (l) { return l.length })
-        .reduce(function (s, level) { return s + level }, 0)
-      updateProgress = progress(total)
-    }
-
-    batches = makeBatches(opts, ancestors, opts.jobs)
-    run()
-  })
-
-  // given a set of tasks (batches), and set of currently running workers (jobs),
-  // kick off appropriate number of workers
-  function run () {
-    var running = Object.keys(jobs).length
-    var available = opts.jobs - running
-    if (available <= 0) { return }
-    if (!batches.length && !running) {
-      if (nextLevelTiles.length && nextLevelTiles[0][0] >= opts.minzoom) {
-        nextLevelTiles = uniq(nextLevelTiles, function (t1, t2) {
-          return t1.join('/') === t2.join('/') ? 0 : 1
-        })
-        nextLevelTiles = [nextLevelTiles].concat(tf.getAncestors(nextLevelTiles, opts.minzoom))
-        batches = makeBatches(opts, nextLevelTiles, opts.jobs)
-        nextLevelTiles = []
-      } else {
-        updateProgress.finish()
-        return cleanup(null, nextLevelTiles)
-      }
-    }
-
-    while (available-- && batches.length) {
-      var options = batches.shift()
-      start(options, jobs, updateProgress, function (err, next) {
-        if (err) { return cleanup(err) }
-        if (next && next.length) {
-          nextLevelTiles = nextLevelTiles.concat(next)
-        }
-        run(batches, jobs)
-      })
-    }
-  }
-
-  var _cleanedUp = false
-  function cleanup (error, result) {
-    if (error) { console.error(error) }
-    if (_cleanedUp) { return }
-    _cleanedUp = true
-    opts.jobs = 0
-    debug('cleaning up')
-    if (output) {
-      series([
-        setJournalMode.bind(null, output._db, 'DELETE'),
-        output.startWriting.bind(output),
-        updateLayerMetadata.bind(null, output, opts),
-        output.stopWriting.bind(output),
-        function (callback) {
-          debug('closing output')
-          // if (output.close) { return output.close(callback) }
-          callback()
-        },
-        function (callback) {
-          debug('closing input')
-          // if (input.close) { return input.close(callback) }
-          callback()
-        }
-      ], function (err) {
-        debug('finished', result.length)
+      function next (err, tiles) {
         if (err) { return done(err) }
-        done(err, result)
-      })
-    } else {
-      done(error, result)
-    }
-  }
-}
-
-// start a single worker
-function start (opts, jobs, onProgress, onExit) {
-  var nextLevel
-
-  var child = fork(__dirname + '/worker.js')
-  jobs[child.pid] = opts
-
-  debug('forked worker', child.pid, xtend(opts, {tiles: opts.tiles.length}))
-
-  child.on('exit', function (e) {
-    delete jobs[child.pid]
-    if (e !== 0) {
-      return onExit(new Error('Worker exited with nonzero status ' + e))
-    }
-    onExit(null, nextLevel)
-  })
-
-  child.on('message', function (m) {
-    if (m.nextLevel) { nextLevel = m.nextLevel }
-    if (m.progress && opts.progress) {
-      onProgress.apply(null, [Object.keys(jobs).length].concat(m.progress))
-    }
-  })
-
-  child.on('error', function (e) { return onExit(e) })
-
-  // start the work by sending options to the worker
-  child.send(opts)
-}
-
-/**
- * Make batches from the given options and list of tiles
- * @private
- * @param opts
- * @param levels
- * @param numBatches
- */
-function makeBatches (opts, levels, numBatches) {
-  function batchFilter (job) { return function (_, i) { return i % numBatches === job } }
-  function nonempty (a) { return a.length }
-  var pyramidBatches = levels.map(function (level) {
-    return range(numBatches)
-      .map(function (b) { return level.filter(batchFilter(b)) })
-      .map(function (b) { return levels[0].filter(tf.hasProgeny(b)) })
-      .filter(nonempty)
-      .map(function (b) {
-        return {
-          minzoom: level[0][0],
-          tiles: b
+        zoomLevelFiles.push(tiles)
+        if (--zoom < opts.minzoom) { opts = optionStack.shift() }
+        if (opts) {
+          input = path.join(tmpdir, 'z' + (zoom + 1) + '.mbtiles')
+          buildZoomLevel(tmpdir, input, zoom, opts, next)
+        } else {
+          mergeZoomLevels(output, zoomLevelFiles, function (err) {
+            done(err, stats)
+          })
         }
-      })
-  })
-
-  // the actual number of batches should be whatever number the base tiles
-  // can support
-  numBatches = pyramidBatches[0].length
-
-  // filter out pyramid levels that can't support that many batches, and then
-  // choose the highest one to make the actual array of batch options
-  pyramidBatches = pyramidBatches
-    .filter(function (f, i) { return i === 0 || f.length >= numBatches })
-
-  return pyramidBatches[pyramidBatches.length - 1].map(function (batch) {
-    return xtend(opts, batch)
+      }
+    })
   })
 }
 
-function updateLayerMetadata (dest, opts, callback) {
-  var vectorlayers = []
-  var aggregations = opts.aggregations
-  if (typeof aggregations === 'string') {
-    aggregations = require(path.resolve(aggregations)).aggregations
-  }
-  for (var layerName in aggregations) {
-    var layer = {
-      id: layerName,
-      description: '',
-      fields: {}
-    }
-    for (var field in aggregations[layerName]) {
-      layer.fields[field] = aggregations[layerName][field] + ''
-    }
-    vectorlayers.push(layer)
-  }
-  dest.putInfo({
-    vector_layers: vectorlayers,
-    minzoom: opts.minzoom
-  }, callback)
-}
+function buildZoomLevel (tmpdir, input, zoom, opts, cb) {
+  var outputTiles = path.join(tmpdir, 'z' + zoom + '.mbtiles')
+  var outputGeojson = path.join(tmpdir, 'z' + zoom + '.json')
+  var outputStream = fs.createWriteStream(outputGeojson)
 
-function setJournalMode (db, mode, callback) {
-  if (db) {
-    db.run('PRAGMA journal_mode=' + mode, callback)
+  var tileReduceOptions = {
+    map: path.join(__dirname, 'lib/aggregate.js'),
+    sources: [{ name: 'data', mbtiles: input }],
+    zoom: zoom + 1,
+    maxWorkers: opts.jobs,
+    mapOptions: opts,
+    output: outputStream
+  }
+
+  if (opts.inputTiles) {
+    tileReduceOptions.tiles = opts.inputTiles
   } else {
-    callback()
+    tileReduceOptions.sourceCover = 'data'
   }
+
+  tileReduce(tileReduceOptions)
+  .on('reduce', function (data) {
+    if (!opts._stats) { return }
+    opts._stats.tiles++
+    for (var k in data) {
+      opts._stats.features[k] = (opts._stats.features[k] || 0) + data[k]
+    }
+  })
+  .on('end', function () {
+    outputStream.end()
+    tippecanoe(outputTiles, opts.layer, outputGeojson, zoom)
+    .on('exit', function (code) {
+      if (code) { return cb(new Error('Tippecanoe exited nonzero: ' + code)) }
+      cb(null, outputTiles)
+    })
+  })
+}
+
+function mergeZoomLevels (output, levels, cb) {
+  spawn('tile-join', [ '-o', output ].concat(levels), { stdio: 'inherit' })
+  .on('exit', function (code) {
+    if (code) {
+      return cb(new Error('tile-join exited nonzero: ' + code))
+    } else {
+      return cb()
+    }
+  })
+}
+
+function tippecanoe (tiles, layerName, data, zoom) {
+  return spawn('tippecanoe', [
+    '-f',
+    '-l', layerName,
+    '-o', tiles,
+    '-z', zoom,
+    '-Z', zoom,
+    '-b', 0,
+    data
+  ], { stdio: 'inherit' })
+}
+
+function getInfo (input, cb) {
+  var db = new MBTiles(input, function (err) {
+    if (err) { return cb(err) }
+    db.getInfo(cb)
+  })
 }
 

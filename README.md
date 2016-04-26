@@ -26,6 +26,8 @@ that you can visualize the spatial distribution of your data at any scale.
 
 ## Installation
 
+Install [tippecanoe](https://github.com/mapbox/tippecanoe), and then:
+
 ```sh
 npm install -g vt-grid
 ```
@@ -44,14 +46,14 @@ Let's say you've got the data in `data.mbtiles`, at zoom 12 in a layer called
 can build the grid pyramid above this base layer with:
 
 ```sh
-vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 1 --gridsize 16 --layer foo \
- --aggregations 'areaWeightedMean(density)'
+vt-grid input.mbtiles -o output.mbtiles --basezoom 12 --minzoom 1 --gridsize 16 \
+ --aggregations 'foo:areaWeightedMean(density)'
 ```
 
 Starting at zoom 11 and going down to zoom 1, this will build a 16x16 grid in
 each tile, aggregating the data from the zoom level above.  The aggregations
 are defined by the `--aggregations` parameters.  Each one is of the form:
-`aggregationFunction(inputField)`, where `aggregationFunction` can
+`layer:aggregationFunction(field)`, where `aggregationFunction` can
 be any of the built-in aggregations available in
 [`geojson-polygon-aggregate`](https://github.com/anandthakker/geojson-polygon-aggregate).
 So, in this case, we'll end up with a grid where each box has a `density`
@@ -63,12 +65,12 @@ With other aggregations, other stats.  For instance, we could have done:
 ```sh
 # first use count() to find out the number of polygons from the original
 # dataset being aggregated into each grid box at z11
-vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
-  --aggregations 'areaWeightedMean(density)' 'count(numzones)'
+vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 \
+  --aggregations 'foo:areaWeightedMean(density)' 'foo:count(numzones)'
 
 # now, for z10 and below, sum the counts
-vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 --layer foo \
-  --aggregations 'areaWeightedMean(density)' 'sum(numzones)'
+vt-grid input.mbtiles output.mbtiles --basezoom 12 --minzoom 11 --gridsize 16 \
+  --aggregations 'foo:areaWeightedMean(density)' 'foo:sum(numzones)'
 ```
 
 ### Node
@@ -164,32 +166,18 @@ This yields features that look like:
 
 Build a pyramid of aggregated square-grid features.
 
-
 **Parameters**
 
--   `opts` **Object** 
-    -   `opts.putput` **string** An 'mbtiles://' uri to which to output aggregated data
-
-    -   `opts.basezoom` **number** The zoom level at which to find the initial data
-
-    -   `opts.gridsize` **number** Number of grid squares per tile
-
-    -   `opts.input` **string** An 'mbtiles://' uri to the input data
-
-    -   `opts.aggregations` **Object or string** If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see `#grid` for details).
-
-    -   `opts.postAggregations` **[string]** Path to a module mapping layer names to postAggregations objects.  See `#grid` for details.
-
-    -   `opts.jobs` **number** The number of jobs to try to run in parallel. Note that once the zoom level gets low enough, the degree of parallelization will be reduced.
-
-    -   `opts.progress` **boolean** Display a progress bar (uses stderr)
-
-    -   `opts.minzoom` **number** Build the aggregated pyramid to this zoom level
-
--   `done` **function** called with (err) when done
-
-
-
+-   `output` **[string](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String)** Path to output aggregated mbtiles data
+-   `input` **[string](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String)** Path to the input mbtiles data
+-   `opts` **[Object](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object)** 
+    -   `opts.basezoom` **[number](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number)** The zoom level at which to find the initial data
+    -   `opts.inputTiles` **[Array](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array)=** An array of [z, x, y] tile coordinates to start with
+    -   `opts.gridsize` **[number](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number)** Number of grid squares per tile
+    -   `opts.aggregations` **([Object](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object)\|[string](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String))** If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see `#grid` for details).
+    -   `opts.postAggregations` **[string](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String)=** Path to a module mapping layer names to postAggregations objects.  See `#grid` for details.
+    -   `opts.jobs` **[number](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number)** The number of jobs to run in parallel.
+-   `done` **[function](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/function)** called with (err) when done
 
 ## Built With
 
