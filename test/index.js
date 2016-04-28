@@ -5,54 +5,56 @@ var tmp = require('tmp')
 var vtgeojson = require('vt-geojson')
 var MBTiles = require('mbtiles')
 var vtgrid = require('../')
+var tilebelt = require('tilebelt')
 
 test('main module', function (t) {
-  var output = tmp.tmpNameSync({postfix: '.mbtiles'})
-  vtgrid({
-    input: 'mbtiles://' + path.resolve(__dirname, 'fixture', 'dc.mbtiles'),
-    output: 'mbtiles://' + path.resolve(output),
-    minzoom: 1,
-    gridsize: 64,
-    jobs: 1,
-    aggregations: {
-      'dc': {
-        'data': 'sum'
-      }
-    }
-  }, function (err) {
+  tmp.file({postfix: '.mbtiles'}, function (err, output) {
     t.error(err)
-
-    var expected = fs.readFileSync(__dirname + '/fixture/dc.z12-grid-quadkeys.txt')
-      .toString()
-      .split('\n')
-
-    var results = {}
-    vtgeojson('mbtiles://' + output, {
+    vtgrid(path.resolve(output), path.resolve(__dirname, 'fixture', 'dc.mbtiles'), {
       minzoom: 12,
-      bounds: JSON.parse(fs.readFileSync(__dirname + '/fixture/dc.geojson'))
-    })
-    .on('data', function (feature) {
-      results[feature.properties._quadKey] = feature.properties.data
-    })
-    .on('end', function () {
-      console.log(output)
-      for (var key in results) {
-        if (expected.indexOf(key) >= 0) {
-          t.ok(results[key] > 0)
-        } else {
-          t.ok(results[key] === 0 || !results[key])
+      gridsize: 64,
+      jobs: 1,
+      aggregations: {
+        'dc': {
+          'data': 'sum'
         }
       }
+    }, function (err) {
+      t.error(err)
 
-      getInfo(output, function (err, info) {
-        t.error(err)
-        var expectedJSON = fs.readFileSync(__dirname + '/fixture/dc.tilejson.json')
-        expectedJSON = JSON.parse(expectedJSON)
-        delete info.id
-        delete info.basename
-        delete info.filesize
-        t.same(info, expectedJSON, 'tilejson metadata')
-        t.end()
+      var expected = fs.readFileSync(path.join(__dirname, '/fixture/dc.z12-grid-quadkeys.txt'), 'utf-8')
+        .split('\n')
+        .filter(Boolean)
+
+      var results = {}
+      vtgeojson('mbtiles://' + output, {
+        minzoom: 12,
+        maxzoom: 12,
+        bounds: JSON.parse(fs.readFileSync(path.join(__dirname, '/fixture/dc.geojson')))
+      })
+      .on('data', function (feature) {
+        results[feature.properties._quadKey] = feature.properties.data
+      })
+      .on('end', function () {
+        expected.forEach(function (key) {
+          var tile = tilebelt.quadkeyToTile(key)
+          t.ok(results[key] > 0, results[key] + ' > 0 for tile ' + tile)
+          delete results[key]
+        })
+
+        for (var key in results) {
+          t.ok(results[key] === 0 || !results[key], 'no value for tile ' + key)
+        }
+
+        getInfo(output, function (err, info) {
+          t.error(err)
+          t.ok(info.vector_layers && info.vector_layers[0], 'vector_layers')
+          t.same(info.vector_layers[0].id, 'dc', 'layer id')
+          t.ok(info.vector_layers[0].fields['data'], '"data" field')
+          t.same(info.minzoom, 12)
+          t.same(info.maxzoom, 13)
+          t.end()
+        })
       })
     })
   })

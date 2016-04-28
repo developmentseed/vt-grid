@@ -4,7 +4,7 @@
   "description": "Build up a pyramid of vector tiles by aggregating quantitative data into grids at lower zooms.",
   "bin": "bin/vt-grid",
   "scripts": {
-    "test": "standard && tap --coverage test/*.js test/lib",
+    "test": "eslint . && tap --coverage test/*.js test/lib",
     "docs": "documentation readme -s API"
   },
   "repository": {
@@ -13,11 +13,6 @@
   },
   "author": "Anand Thakker <vestibule@anandthakker.net> (http://anandthakker.net/)",
   "license": "ISC",
-  "standard": {
-    "ignore": [
-      "lib/geojson-wrapper.js"
-    ]
-  },
   "dependencies": {
     "geojson-polygon-aggregate": "^1.4.1",
     "geojson-vt": "^2.1.7",
