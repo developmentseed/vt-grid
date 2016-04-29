@@ -2,7 +2,7 @@
 var os = require('os')
 var vtGrid = require('../')
 
-var validAggregations = Object.keys(require('geojson-polygon-aggregate'))
+var validAggregations = Object.keys(require('geojson-polygon-aggregate/reducers'))
 
 var argv = require('yargs')
   .usage('$0 input.mbtiles -o output.mbtiles [--minzoom 7] [--basezoom 12] [--gridsize 1024] --aggregations \'layerName:areaWeightedMean(fieldName)\' \'layerName:count()\'')

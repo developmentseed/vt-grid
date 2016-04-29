@@ -81,7 +81,7 @@ functions) by using vt-grid programmatically:
 ```javascript
 var path = require('path')
 var vtGrid = require('vt-grid')
-var aggregate = require('geojson-polygon-aggregate')
+var reducers = require('geojson-polygon-aggregate/reducers')
 
 if (require.main === module) {
   vtGrid('/path/to/output.mbtiles', 'path/to/input.mbtiles', {
@@ -98,7 +98,7 @@ if (require.main === module) {
 module.exports = {
   aggregations: {
     footprints: {
-      FID: aggregate.union('FID'),
+      FID: reducers.union('FID'),
       someField: function myCustomAggregator (memo, feature) {
         var newMemo = -1
         // do stuff, works like an Array.reduce() function
