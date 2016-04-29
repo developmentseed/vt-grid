@@ -19,7 +19,8 @@ module.exports = vtGrid
  * @param {string} input Path to the input mbtiles data
  * @param {Object|Array} options Options OR an array of options objects to allow different aggregations/settings for different zoom levels
  * @param {number} options.basezoom The zoom level at which to find the initial data
- * @param {Array} [options.inputTiles] An array of [z, x, y] tile coordinates to start with
+ * @param {Array} [options.tiles] An array of [z, x, y] tile coordinates to start with
+ * @param {Array} [options.bbox] A [w, s, e, n] bbox defining the area to start with
  * @param {number} options.gridsize Number of grid squares per tile
  * @param {Object|string} options.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see {@link #grid} for details).
  * @param {string} [options.postAggregations] - Path to a module mapping layer names to postAggregations objects.  See {@link #grid} for details.
@@ -27,6 +28,7 @@ module.exports = vtGrid
  * @param {boolean} [options.quiet=false] Disable log output
  * @param {function} callback called with (err) when done
  */
+
 function vtGrid (output, input, options, callback) {
   // allow an array of options, each defining different parts of the pyramid,
   // to allow different aggregations at different parts (often needed for
@@ -82,7 +84,9 @@ function vtGrid (output, input, options, callback) {
   function buildZoomLevel (tmpdir, input) {
     var outputTiles = path.join(tmpdir, 'z' + currentZoom + '.mbtiles')
     var outputGeojson = path.join(tmpdir, 'z' + currentZoom + '.json')
-    var outputStream = fs.createWriteStream(outputGeojson)
+    var outputStream = currentOptions.output
+      ? fs.createWriteStream(outputGeojson)
+      : process.stdout
 
     var tileReduceOptions = {
       map: path.join(__dirname, 'lib/aggregate.js'),
@@ -94,8 +98,13 @@ function vtGrid (output, input, options, callback) {
       log: false
     }
 
-    if (currentOptions.inputTiles) {
-      tileReduceOptions.tiles = currentOptions.inputTiles
+    if (currentOptions.tiles) {
+      tileReduceOptions.tiles = currentOptions.tiles
+    } else if (currentOptions.bbox) {
+      tileReduceOptions.bbox = currentOptions.bbox
+      if (typeof tileReduceOptions.bbox === 'string') {
+        tileReduceOptions.bbox = tileReduceOptions.bbox.split(',').map(Number)
+      }
     } else {
       tileReduceOptions.sourceCover = 'data'
     }
@@ -113,6 +122,8 @@ function vtGrid (output, input, options, callback) {
       }
     })
     .on('end', function () {
+      if (!currentOptions.output) { return done() }
+
       outputStream.end()
 
       if (!currentOptions.quiet) {
