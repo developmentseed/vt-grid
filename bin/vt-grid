@@ -21,6 +21,7 @@ var argv = require('yargs')
   .default('basezoom', Infinity)
   .default('jobs', os.cpus().length)
   .describe('jobs', 'The number of concurrent processes to run')
+  .describe('quiet', 'Suppress log output')
   .help('h')
   .argv
 
