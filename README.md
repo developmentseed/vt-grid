@@ -84,9 +84,7 @@ var vtGrid = require('vt-grid')
 var aggregate = require('geojson-polygon-aggregate')
 
 if (require.main === module) {
-  vtGrid({
-    input: 'mbtiles://' + path.resolve(process.cwd(), process.argv[2]),
-    output: 'mbtiles://path/to/output.mbtiles',
+  vtGrid('/path/to/output.mbtiles', 'path/to/input.mbtiles', {
     minzoom: 1,
     basezoom: 10,
     aggregations: __filename, // this can be any file that exports an `aggregations` object like the one below
