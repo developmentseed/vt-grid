@@ -7,6 +7,7 @@ var tmp = require('tmp')
 var MBTiles = require('mbtiles')
 var tileReduce = require('tile-reduce')
 var log = require('single-line-log').stderr
+var prettyMs = require('pretty-ms')
 
 tmp.setGracefulCleanup()
 
@@ -48,7 +49,7 @@ function vtGrid (output, input, options, callback) {
     }
   })
 
-  var stats = { tiles: 0, zoomLevels: {}, layers: {} }
+  var stats = { tiles: 0, zoomLevels: {}, layers: {}, start: Date.now() }
   var currentOptions = optionStack.shift()
   var currentState = '' // aggregating | tiling
   var currentZoom
@@ -109,7 +110,7 @@ function vtGrid (output, input, options, callback) {
       tileReduceOptions.sourceCover = 'data'
     }
 
-    stats.zoomLevels[currentZoom] = { features: 0, tiles: 0 }
+    stats.zoomLevels[currentZoom] = { features: 0, tiles: 0, start: Date.now() }
     currentState = 'aggregating'
 
     tileReduce(tileReduceOptions)
@@ -123,13 +124,10 @@ function vtGrid (output, input, options, callback) {
     })
     .on('end', function () {
       if (!currentOptions.output) { return done() }
-
       outputStream.end()
 
-      if (!currentOptions.quiet) {
-        logProgress()
-        process.stderr.write('\n')
-      }
+      logNext()
+      stats.zoomLevels[currentZoom].tilingStart = Date.now()
       currentState = 'tiling'
 
       tippecanoe(outputTiles, currentOptions.layer, outputGeojson, currentZoom)
@@ -137,6 +135,7 @@ function vtGrid (output, input, options, callback) {
         if (code > 0) {
           return done(new Error('Tippecanoe exited nonzero: ' + code))
         }
+        logNext()
 
         zoomLevelFiles.push(outputTiles)
         if (--currentZoom < currentOptions.minzoom) {
@@ -164,14 +163,23 @@ function vtGrid (output, input, options, callback) {
 
   function logProgress (finished) {
     if (!currentOptions || currentOptions.quiet) { return }
+    var currentStats = stats.zoomLevels[currentZoom]
     if (currentState === 'aggregating') {
-      log('Aggregating z' + (currentZoom + 1) + ', processed ' +
-          stats.zoomLevels[currentZoom].features + ' features in ' +
-          stats.zoomLevels[currentZoom].tiles + ' tiles.')
+      log('z' + currentZoom + ': aggregated ' +
+          currentStats.features + ' features / ' +
+          currentStats.tiles + ' tiles in ' +
+          prettyMs(Date.now() - currentStats.start))
     } else if (currentState === 'tiling') {
-      log('Writing z' + currentZoom + ' tiles.')
+      log('Writing tiles ' + prettyMs(Date.now() - currentStats.tilingStart))
     }
     if (finished) { log.clear() }
+  }
+
+  function logNext () {
+    if (currentOptions && !currentOptions.quiet) {
+      logProgress()
+      process.stderr.write('\n')
+    }
   }
 }
 
