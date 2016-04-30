@@ -1,0 +1,75 @@
+#!/usr/bin/env node
+'use strict'
+
+const split = require('split')
+const through = require('through2')
+const streamStatistics = require('stream-statistics')
+
+module.exports = summaryStream
+function summaryStream (columns) {
+  let summaries = {}
+  return through.obj(write, end)
+
+  function write (data, _, next) {
+    let self = this
+    let summary = summaries[data.label]
+    if (!summary) {
+      // set up summary streams
+      summary = summaries[data.label] = {
+        streams: {},
+        results: { label: data.label },
+        pending: 0
+      }
+      columns.forEach(function (column) {
+        let parsed = column.split(':')
+        let k = parsed[0]
+        let stat = parsed[1]
+        if (summary.streams[k]) { return }
+
+        summary.pending++
+        summary.streams[k] = streamStatistics()
+        .on('data', function (summarized) {
+          columns
+          .filter((c) => c.startsWith(k + ':'))
+          .forEach((column) => { summary.results[column] = summarized[stat] })
+        })
+        .on('end', function () {
+          summary.pending--
+          if (summary.pending === 0) {
+            self.push(summary.results)
+            for (let l in summaries) { if (summaries[l].pending) { return } }
+            self.push(null)
+          }
+        })
+      })
+    }
+
+    for (let k in summary.streams) { summary.streams[k].write(data[k]) }
+    next()
+  }
+
+  function end () {
+    for (let label in summaries) {
+      let summary = summaries[label]
+      for (let k in summary.streams) {
+        summary.streams[k].end()
+      }
+    }
+  }
+}
+
+if (require.main === module) {
+  process.stdin.pipe(split())
+  .pipe(through.obj(function (line, _, next) {
+    if (line && line.length) {
+      next(null, JSON.parse(line))
+    } else {
+      next()
+    }
+  }))
+  .pipe(summaryStream(process.argv.slice(2)))
+  .pipe(through.obj(function (data, _, next) {
+    next(null, JSON.stringify(data) + '\n')
+  }))
+  .pipe(process.stdout)
+}

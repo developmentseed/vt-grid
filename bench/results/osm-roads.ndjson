@@ -1,0 +1,2 @@
+{"label":"osm/1024-grid/no-aggregations","n":10000,"elapsed:mean":1.3253999999999997,"elapsed:standard_deviation":1.3253999999999997,"data.layers.layer:mean":9.04780000000001}
+{"label":"osm/1024-grid/road-length","n":10000,"elapsed:mean":1.298699999999996,"elapsed:standard_deviation":1.298699999999996,"data.layers.layer:mean":9.04780000000001}
