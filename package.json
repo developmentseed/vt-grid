@@ -23,6 +23,7 @@
     "single-line-log": "^1.1.1",
     "tile-reduce": "^3.1.1",
     "tilebelt": "^0.7.1",
+    "tmp": "0.0.28",
     "uniq": "^1.0.1",
     "vector-tile": "^1.1.3",
     "yargs": "^3.15.0"
@@ -42,7 +43,6 @@
     "stream-statistics": "^0.4.0",
     "tap": "^2.0.0",
     "through2": "^2.0.1",
-    "tmp": "0.0.28",
     "vt-geojson": "^2.0.0"
   }
 }
