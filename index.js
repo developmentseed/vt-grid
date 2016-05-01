@@ -25,6 +25,7 @@ module.exports = vtGrid
  * @param {number} options.gridsize Number of grid squares per tile
  * @param {Object|string} options.aggregations If an object, then it maps layer names to aggregation objects, which themselves map field names to geojson-polygon-aggregate aggregation function names. Each worker will construct the actual aggregation function from geojson-polygon-aggregate by passing it the field name as an argument.  If a string, then it's the path of a module that exports a layer to aggregation object map (see {@link #grid} for details).
  * @param {string} [options.postAggregations] - Path to a module mapping layer names to postAggregations objects.  See {@link #grid} for details.
+ * @param {boolean} [options.includeBaseData=true] Set false to exclude the base-level data from the merged output.
  * @param {number} options.jobs The number of jobs to run in parallel.
  * @param {boolean} [options.quiet=false] Disable log output
  * @param {function} callback called with (err) when done
@@ -38,7 +39,8 @@ function vtGrid (output, input, options, callback) {
   optionStack = optionStack.map(function (o) {
     return Object.assign({
       jobs: os.cpus().length,
-      basezoom: Infinity
+      basezoom: Infinity,
+      includeBaseData: true
     }, o)
   })
   .sort(function (a, b) { return b.basezoom - a.basezoom })
@@ -53,7 +55,7 @@ function vtGrid (output, input, options, callback) {
   var currentOptions = optionStack.shift()
   var currentState = '' // aggregating | tiling
   var currentZoom
-  var zoomLevelFiles = [input]
+  var zoomLevelFiles = currentOptions.includeBaseData ? [input] : []
 
   var timer = setInterval(logProgress, 100)
 
@@ -85,7 +87,7 @@ function vtGrid (output, input, options, callback) {
   function buildZoomLevel (tmpdir, input) {
     var outputTiles = path.join(tmpdir, 'z' + currentZoom + '.mbtiles')
     var outputGeojson = path.join(tmpdir, 'z' + currentZoom + '.json')
-    var outputStream = currentOptions.output
+    var outputStream = output
       ? fs.createWriteStream(outputGeojson)
       : process.stdout
 
@@ -123,7 +125,7 @@ function vtGrid (output, input, options, callback) {
       }
     })
     .on('end', function () {
-      if (!currentOptions.output) { return done() }
+      if (!output) { return done() }
       outputStream.end()
 
       logNext()
