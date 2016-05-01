@@ -9,6 +9,10 @@ var tileReduce = require('tile-reduce')
 var log = require('single-line-log').stderr
 var prettyMs = require('pretty-ms')
 
+var debug = require('debug')
+var debugLog = debug('vt-grid:main')
+var debugEnabled = debug.enabled('vt-grid:main')
+
 tmp.setGracefulCleanup()
 
 module.exports = vtGrid
@@ -91,6 +95,8 @@ function vtGrid (output, input, options, callback) {
       ? fs.createWriteStream(outputGeojson)
       : process.stdout
 
+    debugLog('build zoom level', outputGeojson, outputTiles)
+
     var tileReduceOptions = {
       map: path.join(__dirname, 'lib/aggregate.js'),
       sources: [{ name: 'data', mbtiles: input }],
@@ -171,7 +177,8 @@ function vtGrid (output, input, options, callback) {
           currentStats.features + ' features / ' +
           currentStats.tiles + ' tiles in ' +
           prettyMs(Date.now() - currentStats.start))
-    } else if (currentState === 'tiling') {
+    } else if (currentState === 'tiling' && !debugEnabled) {
+      // if debug output is enabled, then let tippecanoe log its own stuff
       log('Writing tiles ' + prettyMs(Date.now() - currentStats.tilingStart))
     }
     if (finished) { log.clear() }
@@ -186,16 +193,18 @@ function vtGrid (output, input, options, callback) {
 }
 
 function tippecanoe (tiles, layerName, data, zoom) {
-  return spawn('tippecanoe', [
+  var args = [
     '-f',
     '-l', layerName,
     '-o', tiles,
     '-z', zoom,
     '-Z', zoom,
-    '-q',
+    '--read-parallel',
     '-b', 0,
     data
-  ], { stdio: 'inherit' })
+  ]
+  if (!debugEnabled) { args.unshift('--quiet') }
+  return spawn('tippecanoe', args, { stdio: 'inherit' })
 }
 
 function getInfo (input, cb) {
