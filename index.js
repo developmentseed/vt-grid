@@ -14,7 +14,9 @@ var debug = require('debug')
 var debugLog = debug('vt-grid:main')
 var debugEnabled = debug.enabled('vt-grid:main')
 
-tmp.setGracefulCleanup()
+if (!debugEnabled) {
+  tmp.setGracefulCleanup()
+}
 
 module.exports = vtGrid
 
@@ -83,7 +85,7 @@ function vtGrid (output, input, options, callback) {
     if (!currentOptions.layer) { currentOptions.layer = info.vector_layers[0].id }
     optionStack.forEach(function (o) { o.layer = o.layer || currentOptions.layer })
 
-    tmp.dir({unsafeCleanup: true}, function (err, tmpdir) {
+    tmp.dir({unsafeCleanup: !debugEnabled}, function (err, tmpdir) {
       if (err) { return done(err) }
       buildZoomLevel(tmpdir, input)
     })
@@ -160,7 +162,9 @@ function vtGrid (output, input, options, callback) {
   }
 
   function mergeZoomLevels () {
-    spawn('tile-join', [ '-o', output ].concat(zoomLevelFiles), { stdio: 'inherit' })
+    var args = [ '-o', output ].concat(zoomLevelFiles)
+    debugLog('tile-join', args)
+    spawn('tile-join', args, { stdio: 'inherit' })
     .on('exit', function (code) {
       if (code) {
         return done(new Error('tile-join exited nonzero: ' + code))
@@ -205,6 +209,7 @@ function tippecanoe (tiles, layerName, data, zoom) {
     data
   ]
   if (!debugEnabled) { args.unshift('--quiet') }
+  debugLog('tippecanoe ', args)
   return spawn('tippecanoe', args, { stdio: 'inherit' })
 }
 
